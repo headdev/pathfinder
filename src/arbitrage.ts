@@ -75,7 +75,7 @@ async function fetchSushiswapPools(tokenIds) {
 async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false) {
   if (debug) console.log(pools);
 
-  console.log('pooolsss', pools.values());
+  console.log('pooolissssss', pools.values());
   
   for (var pool of Array.from(pools.values())) {
     if (debug) console.log(dex, pool) //debug
@@ -87,7 +87,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
     let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
 
 
-    console.log('trayendo pool info', poolRequest);
+    console.log('trayendo pool info', );
     
     let poolData =  (dex === DEX.UniswapV3) ? poolRequest.pool :
                     (dex === DEX.Sushiswap) ? poolRequest.pair : [];
@@ -97,7 +97,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
     // Pools exist with tiny TLV values
     let reserves =  (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : 
                     (dex === DEX.Sushiswap) ? Number(poolData.reserveUSD) : 0;
-    if (poolData.token1Price != 0 && poolData.token0Price != 0) {
+    if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
 
       let vertex0 = g.getVertexByKey(poolData.token0.id);
       let vertex1 = g.getVertexByKey(poolData.token1.id);
@@ -110,7 +110,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
 
       // Temporary solution to multiple pools per pair
       // TODO: Check if edge exists, if yes, replace iff price is more favorable (allows cross-DEX)
-      let forwardEdgeExists = g.findEdge(vertex0, vertex1); 
+      let forwardEdgeExists = g.findEdge(vertex0, vertex1);
       let backwardEdgeExists = g.findEdge(vertex1, vertex0);
 
       if (forwardEdgeExists) {
