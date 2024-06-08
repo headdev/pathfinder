@@ -46,15 +46,13 @@ async function fetchUniswapPools(tokenIds) {
   for (let id of tokenIds) {
     // Query whitelisted pools for token
     let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
-    let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
+    console.log('Pools', whitelistPoolsRaw, "pool id: ", whitelistPoolsRaw.pools[0].id);
+    let whitelistPools = whitelistPoolsRaw;
 
     // Filter to only
-    for (let pool of whitelistPools) {
-      let otherToken = (pool.token0.id === id) ? pool.token1.id : pool.token0.id;
-      if (tokenIdsSet.has(otherToken)) {
-        pools.add(pool.id)
-      }
-    }
+   // for (let pool of whitelistPools.pools) {
+    pools.add(whitelistPoolsRaw.pools[0].id)
+    //}
   }
   return pools;
 }
@@ -76,6 +74,9 @@ async function fetchSushiswapPools(tokenIds) {
 // Fetch prices
 async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false) {
   if (debug) console.log(pools);
+
+  console.log('pooolsss', pools.values());
+  
   for (var pool of Array.from(pools.values())) {
     if (debug) console.log(dex, pool) //debug
     let DEX_ENDPOINT =  (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT :
@@ -84,6 +85,10 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
                         (dex === DEX.Sushiswap) ? SUSHISWAP.PAIR(pool) : "";;
 
     let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
+
+
+    console.log('trayendo pool info', poolRequest);
+    
     let poolData =  (dex === DEX.UniswapV3) ? poolRequest.pool :
                     (dex === DEX.Sushiswap) ? poolRequest.pair : [];
     if (debug) console.log(poolData); //debug
@@ -92,7 +97,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
     // Pools exist with tiny TLV values
     let reserves =  (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : 
                     (dex === DEX.Sushiswap) ? Number(poolData.reserveUSD) : 0;
-    if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
+    if (poolData.token1Price != 0 && poolData.token0Price != 0) {
 
       let vertex0 = g.getVertexByKey(poolData.token0.id);
       let vertex1 = g.getVertexByKey(poolData.token1.id);
@@ -105,7 +110,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
 
       // Temporary solution to multiple pools per pair
       // TODO: Check if edge exists, if yes, replace iff price is more favorable (allows cross-DEX)
-      let forwardEdgeExists = g.findEdge(vertex0, vertex1);
+      let forwardEdgeExists = g.findEdge(vertex0, vertex1); 
       let backwardEdgeExists = g.findEdge(vertex1, vertex0);
 
       if (forwardEdgeExists) {
@@ -154,7 +159,7 @@ async function calcArbitrage(g) {
   return arbitrageData;
 }
 
-async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
+async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = true) {
   let g: Graph = new Graph(true);
 
   // Add vertices to graph
@@ -168,6 +173,10 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
   // Check which DEXs to arb
   if (DEXs.has(DEX.UniswapV3)) {
     let uniPools: Set<string> = await fetchUniswapPools(tokenIds);
+    console.log('Heeeeee', uniPools);
+
+    // return
+    
     await fetchPoolPrices(g, uniPools, DEX.UniswapV3, debug);
   }
   if (DEXs.has(DEX.Sushiswap)) {

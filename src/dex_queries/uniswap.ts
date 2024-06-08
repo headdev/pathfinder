@@ -3,7 +3,7 @@ import { gql } from 'graphql-request'
 /**
  * VARIABLES
  */
-export const ENDPOINT = `https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3`;
+export const ENDPOINT = `https://api.studio.thegraph.com/query/70625/uniswapv3/v0.0.1`;
 
 /**
  * QUERIES
@@ -53,17 +53,37 @@ export function fetch_pool(id) {
 export function token_whitelist_pools(id) {
   return gql`
     {
-      token(id: "${id}") {
-        whitelistPools {
+      pools(where: { token1: "${id}" }) {
+        id
+        token0 {
           id
-          token0 {
-            id
-          }
-          token1 {
-            id
-          }
+          symbol
+          name
+        }
+        token1 {
+          id
+          symbol
+          name
         }
       }
     }
   `
 }
+
+// export function token_whitelist_pools(id) {
+//   return gql`
+//     {
+//       token(id: "${id}") {
+//         whitelistPools {
+//           id
+//           token0 {
+//             id
+//           }
+//           token1 {
+//             id
+//           }
+//         }
+//       }
+//     }
+//   `
+// }
