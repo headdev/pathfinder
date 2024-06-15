@@ -13,13 +13,36 @@ async function fetchTokens(first, skip = 0, dex: DEX) {
   let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
   let tokensQuery = (dex === DEX.UniswapV3) ? UNISWAP.HIGHEST_VOLUME_TOKENS(first) : SUSHISWAP.HIGHEST_VOLUME_TOKENS(first, skip);
   let mostActiveTokens = await request(dexEndpoint, tokensQuery);
-  console.log(`Tokens:`, mostActiveTokens.tokens)
 
-  return mostActiveTokens.tokens.map((t) => { return t.id });
+  if (!mostActiveTokens || !mostActiveTokens.tokens) {
+    console.error('No se encontraron tokens en la respuesta:', mostActiveTokens);
+    return [];
+  }
+
+  let top20Tokens = mostActiveTokens.tokens
+  .slice(0, 20);
+
+  console.log(`Tokens:`,  top20Tokens ) //mostActiveTokens.tokens)
+
+  return top20Tokens.map((t) => { return t.id });
+}
+
+function classifyEdge(g, startKey, endKey) {
+  let startVertex = g.getVertexByKey(startKey);
+  let endVertex = g.getVertexByKey(endKey);
+  let edge = g.findEdge(startVertex, endVertex);
+
+  if (edge.rawWeight > 1) {
+    return 'buy';
+  } else {
+    return 'sell';
+  }
 }
 
 function calculatePathWeight(g, cycle) {
   let cycleWeight = 1.0;
+  let detailedCycle = [];
+
   // console.log(cycle.length);
   for (let index = 0; index < cycle.length - 1; index++) {
     let indexNext = index + 1;
@@ -34,8 +57,17 @@ function calculatePathWeight(g, cycle) {
     // console.log(cycleWeight * edge.rawWeight)
 
     cycleWeight *= edge.rawWeight;
+
+    let transactionType = classifyEdge(g, cycle[index], cycle[index + 1]);
+    detailedCycle.push({
+      start: cycle[index],
+      end: cycle[index + 1],
+      type: transactionType,
+      rawWeight: edge.rawWeight
+    });
+
   }
-  return cycleWeight;
+  return { cycleWeight, detailedCycle };;
 }
 
 async function fetchUniswapPools(tokenIds) {
@@ -46,6 +78,9 @@ async function fetchUniswapPools(tokenIds) {
   for (let id of tokenIds) {
     // Query whitelisted pools for token
     let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
+
+    // filtrar por las primeras 20, 
+
     let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
 
     // Filter to only
@@ -84,6 +119,8 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
                         (dex === DEX.Sushiswap) ? SUSHISWAP.PAIR(pool) : "";;
 
     let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
+    console.log("poolRequest", poolRequest);
+    
     let poolData =  (dex === DEX.UniswapV3) ? poolRequest.pool :
                     (dex === DEX.Sushiswap) ? poolRequest.pair : [];
     if (debug) console.log(poolData); //debug
@@ -100,6 +137,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
       // TODO: Adjust weight to factor in gas estimates
       let token1Price = Number(poolData.token1Price);
       let token0Price = Number(poolData.token0Price);
+      let fee = Number(poolData.feeTier)
       let forwardEdge = new GraphEdge(vertex0, vertex1, -Math.log(Number(token1Price)), token1Price, { dex: dex, address: pool });
       let backwardEdge = new GraphEdge(vertex1, vertex0, -Math.log(Number(token0Price)), token0Price, { dex: dex, address: pool });
 
@@ -131,11 +169,37 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
   }
 }
 
+
+
+function classifyCycle(g, cycle) {
+  let directions = [];
+
+  for (let index = 0; index < cycle.length - 1; index++) {
+    let startVertex = g.getVertexByKey(cycle[index]);
+    let endVertex = g.getVertexByKey(cycle[index + 1]);
+    let edge = g.findEdge(startVertex, endVertex);
+
+    if (edge.rawWeight > 1) {
+      directions.push('buy');
+    } else {
+      directions.push('sell');
+    }
+  }
+
+  // Determinar la clasificación general del ciclo
+  let buyCount = directions.filter(direction => direction === 'buy').length;
+  let sellCount = directions.filter(direction => direction === 'sell').length;
+
+  return (buyCount > sellCount) ? 'buy' : 'sell';
+}
+
+
 /**
  * Calculates all arbitrage cycles in given graph
  * @param {*} g - graph
  * @returns array of cycles & negative cycle value
  */
+
 async function calcArbitrage(g) {
   let arbitrageData = [];
   let uniqueCycle = {};
@@ -147,7 +211,8 @@ async function calcArbitrage(g) {
       let cycleWeight = calculatePathWeight(g, cycle);
       if (!uniqueCycle[cycleString]) {
         uniqueCycle[cycleString] = true;
-        arbitrageData.push({ cycle: cycle, cycleWeight: cycleWeight });
+        let cycleType = classifyCycle(g, cycle);
+        arbitrageData.push({ cycle: cycle, cycleWeight: cycleWeight.cycleWeight, detail: JSON.stringify(cycleWeight.detailedCycle), type: cycleType });
       }
     }
   });
@@ -177,9 +242,10 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
 
   let arbitrageData = await calcArbitrage(g);
   console.log(`Cycles:`, arbitrageData);
+  
   console.log(`There were ${arbitrageData.length} arbitrage cycles detected.`);
 
-  // printGraphEdges(g);
+  printGraphEdges(g);
 }
 
 // debugging stuff
