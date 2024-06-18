@@ -63,9 +63,7 @@ function calculatePathWeight(g, cycle) {
       start: cycle[index],
       end: cycle[index + 1],
       type: transactionType,
-      rawWeight: edge.rawWeight,
-      dex: edge.metadata.dex, 
-      poolAddress: edge.metadata.address
+      rawWeight: edge.rawWeight
     });
 
   }

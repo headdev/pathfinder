@@ -1,6 +1,6 @@
 import { gql } from 'graphql-request'
 
-export const ENDPOINT = `https://api.thegraph.com/subgraphs/name/sushiswap/exchassssssnge`;
+export const ENDPOINT = `https://api.thegraph.com/subgraphs/name/sushiswap/matic-exchange`;
 
 export function PAIR(id) {
     return gql`
