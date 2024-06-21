@@ -59,11 +59,21 @@ function calculatePathWeight(g, cycle) {
     cycleWeight *= edge.rawWeight;
 
     let transactionType = classifyEdge(g, cycle[index], cycle[index + 1]);
+
+    let dexName = "";
+    if (edge.metadata.dex === DEX.UniswapV3) {
+      dexName = "Uniswap V3";
+    } else if (edge.metadata.dex === DEX.Sushiswap) {
+      dexName = "Sushiswap";
+    }
+
+
     detailedCycle.push({
       start: cycle[index],
       end: cycle[index + 1],
       type: transactionType,
       rawWeight: edge.rawWeight,
+      dexnombre: dexName,
       dex: edge.metadata.dex, 
       poolAddress: edge.metadata.address
     });
@@ -244,6 +254,8 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
 
   let arbitrageData = await calcArbitrage(g);
   console.log(`Cycles:`, arbitrageData);
+
+  //console.log(`Cycles:`, JSON.stringify(arbitrageData, null, 2));
   
   console.log(`There were ${arbitrageData.length} arbitrage cycles detected.`);
 
