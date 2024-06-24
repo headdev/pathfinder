@@ -55,7 +55,7 @@ function classifyEdge(g, startKey, endKey) {
   }
 }
 
-function calculatePathWeight(g, cycle) {
+function calculatePathWeight(g, cycle,initialAmount: number) {
   let cycleWeight = 1.0;
   let detailedCycle = [];
 
@@ -66,13 +66,14 @@ function calculatePathWeight(g, cycle) {
     let startVertex = g.getVertexByKey(cycle[index]);
     let endVertex = g.getVertexByKey(cycle[indexNext]);
     let edge = g.findEdge(startVertex, endVertex);
+    let amount = edge.metadata.amount;
 
     // console.log(`Start: ${startVertex.value} | End: ${endVertex.value}`)
     // console.log(`Adj edge weight: ${edge.weight} | Raw edge weight: ${edge.rawWeight} | ${edge.getKey()}`);
     // console.log(`DEX: ${edge.metadata.dex}`)
     // console.log(cycleWeight * edge.rawWeight)
 
-    cycleWeight *= edge.rawWeight * (1 + SLIPPAGE + LENDING_FEE);
+    cycleWeight *= edge.rawWeight * amount * (1 + SLIPPAGE + LENDING_FEE) * initialAmount;
 
     let transactionType = classifyEdge(g, cycle[index], cycle[index + 1]);
 
@@ -282,19 +283,52 @@ function classifyCycle(g, cycle) {
  * @returns array of cycles & negative cycle value
  */
 
-async function calcArbitrage(g) {
+/*/async function calcArbitrage(g) {
   let arbitrageData = [];
   let uniqueCycle = {};
+  const initialAmounts = [1, 10, 20, 30, 50, 100];
+    // Define los diferentes montos a probar
   g.getAllVertices().forEach((vertex) => {
     let result = bellmanFord(g, vertex);
     let cyclePaths = result.cyclePaths;
     for (var cycle of cyclePaths) {
       let cycleString = cycle.join('');
-      let cycleWeight = calculatePathWeight(g, cycle);
+      let cycleWeights = {}; 
+
+      for (let initialAmount of initialAmounts) {
+      let cycleWeight = calculatePathWeight(g, cycle,initialAmount);
       if (!uniqueCycle[cycleString] && cycleWeight.cycleWeight >= 1 + MINPROFIT) {
         uniqueCycle[cycleString] = true;
         let cycleType = classifyCycle(g, cycle);
         arbitrageData.push({ cycle: cycle, cycleWeight: cycleWeight.cycleWeight, detail: JSON.stringify(cycleWeight.detailedCycle), type: cycleType });
+      }
+    }
+  });
+  return arbitrageData;
+}/*/
+
+async function calcArbitrage(g) {
+  let arbitrageData = [];
+  let uniqueCycle = {};
+
+  const initialAmounts = [1, 10, 20, 30, 50, 100];
+
+  g.getAllVertices().forEach((vertex) => {
+    let result = bellmanFord(g, vertex);
+    let cyclePaths = result.cyclePaths;
+    for (var cycle of cyclePaths) {
+      let cycleString = cycle.join('');
+      let cycleWeights = {};
+
+      for (let initialAmount of initialAmounts) {
+        let cycleWeight = calculatePathWeight(g, cycle, initialAmount);
+        cycleWeights[initialAmount] = cycleWeight.cycleWeight;
+      }
+
+      if (!uniqueCycle[cycleString]) {
+        uniqueCycle[cycleString] = true;
+        let cycleType = classifyCycle(g, cycle);
+        arbitrageData.push({ cycle: cycle, cycleWeights, type: cycleType });
       }
     }
   });
