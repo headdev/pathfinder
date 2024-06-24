@@ -6,7 +6,7 @@ import Graph from './graph_library/Graph';
 import GraphVertex from './graph_library/GraphVertex';
 import GraphEdge from './graph_library/GraphEdge';
 import bellmanFord from './bellman-ford';
-import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE } from './constants';
+import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE,MINPROFIT } from './constants';
 
 
 // tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
@@ -291,7 +291,7 @@ async function calcArbitrage(g) {
     for (var cycle of cyclePaths) {
       let cycleString = cycle.join('');
       let cycleWeight = calculatePathWeight(g, cycle);
-      if (!uniqueCycle[cycleString]) {
+      if (!uniqueCycle[cycleString] && cycleWeight.cycleWeight >= 1 + MINPROFIT) {
         uniqueCycle[cycleString] = true;
         let cycleType = classifyCycle(g, cycle);
         arbitrageData.push({ cycle: cycle, cycleWeight: cycleWeight.cycleWeight, detail: JSON.stringify(cycleWeight.detailedCycle), type: cycleType });

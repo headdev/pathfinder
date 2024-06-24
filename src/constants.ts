@@ -7,6 +7,7 @@ const DEFAULT_TIMEOUT = 5000; //ms
 const DEFAULT_TOKEN_NUMBER = 5;
 const SLIPPAGE = 0.005; // 0.5% slippage
 const LENDING_FEE = 0.005; // 0.5% lending fee
+const MINPROFIT = 0.01;
 
 
 
@@ -16,5 +17,6 @@ export {
     DEFAULT_TIMEOUT,
     DEFAULT_TOKEN_NUMBER,
     SLIPPAGE,
-    LENDING_FEE 
+    LENDING_FEE,
+    MINPROFIT,
 }
