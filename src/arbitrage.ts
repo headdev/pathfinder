@@ -6,10 +6,7 @@ import Graph from './graph_library/Graph';
 import GraphVertex from './graph_library/GraphVertex';
 import GraphEdge from './graph_library/GraphEdge';
 import bellmanFord from './bellman-ford';
-import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE,MINPROFIT } from './constants';
-
-
-// tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
+import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE, MINPROFIT } from './constants';
 
 const ALLOWED_TOKENS = [
   '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
@@ -23,7 +20,6 @@ const ALLOWED_TOKENS = [
   '0xd6df932a45c0f255f85145f286ea0b292b21c90b'
 ];
 
-// Fetch most active tokens 
 async function fetchTokens(first, skip = 0, dex: DEX) {
   let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
   let tokensQuery = (dex === DEX.UniswapV3) ? UNISWAP.HIGHEST_VOLUME_TOKENS(first) : SUSHISWAP.HIGHEST_VOLUME_TOKENS(first, skip);
@@ -38,7 +34,7 @@ async function fetchTokens(first, skip = 0, dex: DEX) {
   .filter(t => ALLOWED_TOKENS.includes(t.id))
   .slice(0, 9);
 
-  console.log(`Tokens:`,  top20Tokens ) //mostActiveTokens.tokens)
+  console.log(`Tokens:`,  top20Tokens );
 
   return top20Tokens.map((t) => { return t.id });
 }
@@ -55,175 +51,97 @@ function classifyEdge(g, startKey, endKey) {
   }
 }
 
-function calculatePathWeight(g, cycle,initialAmount: number) {
+function calculatePathData(g, cycle, initialAmount: number) {
   let cycleWeight = 1.0;
-  let detailedCycle = [];
+  let finalAmount = initialAmount;
 
-  // console.log(cycle.length);
   for (let index = 0; index < cycle.length - 1; index++) {
-    let indexNext = index + 1;
-    // console.log(`new indices: ${index} ${indexNext}`);
     let startVertex = g.getVertexByKey(cycle[index]);
-    let endVertex = g.getVertexByKey(cycle[indexNext]);
+    let endVertex = g.getVertexByKey(cycle[index + 1]);
     let edge = g.findEdge(startVertex, endVertex);
     let amount = edge.metadata.amount;
 
-    // console.log(`Start: ${startVertex.value} | End: ${endVertex.value}`)
-    // console.log(`Adj edge weight: ${edge.weight} | Raw edge weight: ${edge.rawWeight} | ${edge.getKey()}`);
-    // console.log(`DEX: ${edge.metadata.dex}`)
-    // console.log(cycleWeight * edge.rawWeight)
-
-    cycleWeight *= edge.rawWeight * amount * (1 + SLIPPAGE + LENDING_FEE) * initialAmount;
-
-    let transactionType = classifyEdge(g, cycle[index], cycle[index + 1]);
-
-    let dexName = "";
-    if (edge.metadata.dex === DEX.UniswapV3) {
-      dexName = "Uniswap V3";
-    } else if (edge.metadata.dex === DEX.Sushiswap) {
-      dexName = "Sushiswap";
-    }
-
-
-    detailedCycle.push({
-      start: cycle[index],
-      end: cycle[index + 1],
-      type: transactionType,
-      rawWeight: edge.rawWeight,
-      dexnombre: dexName,
-      dex: edge.metadata.dex, 
-      poolAddress: edge.metadata.address
-    });
-
+    cycleWeight *= edge.rawWeight * amount * (1 + SLIPPAGE + LENDING_FEE);
+    finalAmount *= edge.rawWeight * (1 + SLIPPAGE + LENDING_FEE);
   }
-  return { cycleWeight, detailedCycle };;
+
+  return { cycleWeight, finalAmount };
 }
 
-  async function fetchUniswapPools(tokenIds) {
-    let pools = new Set<string>();
-    let tokenIdsSet = new Set(tokenIds);
+async function calcArbitrage(g, initialAmount: number = 1) {
+  let arbitrageData = [];
+  let uniqueCycle = {};
 
-    // Fetch whitelist pools
-    for (let id of tokenIds) {
-      // Query whitelisted pools for token
-      let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
-
-      // filtrar por las primeras 20, 
-
-      let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
-
-      // Filter to only
-      for (let pool of whitelistPools) {
-        let otherToken = (pool.token0.id === id) ? pool.token1.id : pool.token0.id;
-        if (tokenIdsSet.has(otherToken)) {
-          pools.add(pool.id)
-        }
+  g.getAllVertices().forEach((vertex) => {
+    let result = bellmanFord(g, vertex);
+    let cyclePaths = result.cyclePaths;
+    for (var cycle of cyclePaths) {
+      let cycleString = cycle.join('');
+      if (!uniqueCycle[cycleString]) {
+        uniqueCycle[cycleString] = true;
+        let { cycleWeight, finalAmount } = calculatePathData(g, cycle, initialAmount);
+        let cycleType = classifyCycle(g, cycle);
+        arbitrageData.push({ cycle, initialAmount, cycleWeight, finalAmount, type: cycleType });
       }
     }
-    return pools;
+  });
+  return arbitrageData;
+}
+
+async function fetchUniswapPools(tokenIds) {
+  let pools = new Set<string>();
+  let tokenIdsSet = new Set(tokenIds);
+
+  for (let id of tokenIds) {
+    let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
+    let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
+
+    for (let pool of whitelistPools) {
+      let otherToken = (pool.token0.id === id) ? pool.token1.id : pool.token0.id;
+      if (tokenIdsSet.has(otherToken)) {
+        pools.add(pool.id)
+      }
+    }
   }
+  return pools;
+}
 
 async function fetchSushiswapPools(tokenIds) {
   let pools = new Set<string>();
-
-  // Fetch pools
   let poolsDataRaw = await request(SUSHISWAP.ENDPOINT, SUSHISWAP.PAIRS(tokenIds));
   let poolsData = poolsDataRaw.pairs;
 
-  // Filter to only
   for (let pool of poolsData) {
     pools.add(pool.id);
   }
   return pools;
 }
 
-// 7Fetch prices
-/*/async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false) {
-  if (debug) console.log(pools);
-  for (var pool of Array.from(pools.values())) {
-    if (debug) console.log(dex, pool) //debug
-    let DEX_ENDPOINT =  (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT :
-                        (dex === DEX.Sushiswap) ? SUSHISWAP.ENDPOINT : "";
-    let DEX_QUERY =     (dex === DEX.UniswapV3) ? UNISWAP.fetch_pool(pool) :
-                        (dex === DEX.Sushiswap) ? SUSHISWAP.PAIR(pool) : "";;
-
-    let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
-    console.log("poolRequest", poolRequest);
-    
-    let poolData =  (dex === DEX.UniswapV3) ? poolRequest.pool :
-                    (dex === DEX.Sushiswap) ? poolRequest.pair : [];
-    if (debug) console.log(poolData); //debug
-
-    // Some whitelisted pools are inactive for whatever reason
-    // Pools exist with tiny TLV values
-    let reserves =  (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : 
-                    (dex === DEX.Sushiswap) ? Number(poolData.reserveUSD) : 0;
-    if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
-
-      let vertex0 = g.getVertexByKey(poolData.token0.id);
-      let vertex1 = g.getVertexByKey(poolData.token1.id);
-
-      // TODO: Adjust weight to factor in gas estimates
-      let token1Price = Number(poolData.token1Price);
-      let token0Price = Number(poolData.token0Price);
-      let fee = Number(poolData.feeTier)
-      let forwardEdge = new GraphEdge(vertex0, vertex1, -Math.log(Number(token1Price)), token1Price, { dex: dex, address: pool });
-      let backwardEdge = new GraphEdge(vertex1, vertex0, -Math.log(Number(token0Price)), token0Price, { dex: dex, address: pool });
-
-      // Temporary solution to multiple pools per pair
-      // TODO: Check if edge exists, if yes, replace iff price is more favorable (allows cross-DEX)
-      let forwardEdgeExists = g.findEdge(vertex0, vertex1);
-      let backwardEdgeExists = g.findEdge(vertex1, vertex0);
-
-      if (forwardEdgeExists) {
-        if (forwardEdgeExists.rawWeight < forwardEdge.rawWeight) {
-          if (debug) console.log(`replacing: ${poolData.token0.symbol}->${poolData.token1.symbol} from ${forwardEdgeExists.rawWeight} to ${forwardEdge.rawWeight}`)
-          g.deleteEdge(forwardEdgeExists);
-          g.addEdge(forwardEdge);
-        }
-      } else {
-        g.addEdge(forwardEdge);
-      }
-
-      if (backwardEdgeExists) {
-        if (backwardEdgeExists.rawWeight < backwardEdge.rawWeight) {
-          if (debug) console.log(`replacing: ${poolData.token1.symbol}->${poolData.token0.symbol} from ${backwardEdgeExists.rawWeight} to ${backwardEdge.rawWeight}`)
-          g.deleteEdge(backwardEdgeExists);
-          g.addEdge(backwardEdge);
-        }
-      } else {
-        g.addEdge(backwardEdge);
-      }
-    }
-  }
-}/*/
-
 async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false) {
   if (debug) console.log(pools);
   for (var pool of Array.from(pools.values())) {
-    if (debug) console.log(dex, pool) //debug
-    let DEX_ENDPOINT =  (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT :
-                        (dex === DEX.Sushiswap) ? SUSHISWAP.ENDPOINT : "";
-    let DEX_QUERY =     (dex === DEX.UniswapV3) ? UNISWAP.fetch_pool(pool) :
-                        (dex === DEX.Sushiswap) ? SUSHISWAP.PAIR(pool) : "";;
+    if (debug) console.log(dex, pool)
+    let DEX_ENDPOINT = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT :
+                       (dex === DEX.Sushiswap) ? SUSHISWAP.ENDPOINT : "";
+    let DEX_QUERY = (dex === DEX.UniswapV3) ? UNISWAP.fetch_pool(pool) :
+                    (dex === DEX.Sushiswap) ? SUSHISWAP.PAIR(pool) : "";
 
     let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
     console.log("poolRequest", poolRequest);
-    
-    let poolData =  (dex === DEX.UniswapV3) ? poolRequest.pool :
-                    (dex === DEX.Sushiswap) ? poolRequest.pair : [];
-    if (debug) console.log(poolData); //debug
 
-    let reserves =  (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : 
-                    (dex === DEX.Sushiswap) ? Number(poolData.reserveUSD) : 0;
+    let poolData = (dex === DEX.UniswapV3) ? poolRequest.pool :
+                   (dex === DEX.Sushiswap) ? poolRequest.pair : [];
+    if (debug) console.log(poolData);
+
+    let reserves = (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) :
+                   (dex === DEX.Sushiswap) ? Number(poolData.reserveUSD) : 0;
     if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
-
       let vertex0 = g.getVertexByKey(poolData.token0.id);
       let vertex1 = g.getVertexByKey(poolData.token1.id);
 
       let token1Price = Number(poolData.token1Price);
       let token0Price = Number(poolData.token0Price);
-      let fee = Number(poolData.feeTier) // <-- Incluí esta línea
+      let fee = Number(poolData.feeTier)
       let forwardEdge = new GraphEdge(vertex0, vertex1, -Math.log(Number(token1Price)), token1Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
       let backwardEdge = new GraphEdge(vertex1, vertex0, -Math.log(Number(token0Price)), token0Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
 
@@ -253,8 +171,6 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
   }
 }
 
-
-
 function classifyCycle(g, cycle) {
   let directions = [];
 
@@ -276,65 +192,6 @@ function classifyCycle(g, cycle) {
   return (buyCount > sellCount) ? 'buy' : 'sell';
 }
 
-
-/**
- * Calculates all arbitrage cycles in given graph
- * @param {*} g - graph
- * @returns array of cycles & negative cycle value
- */
-
-/*/async function calcArbitrage(g) {
-  let arbitrageData = [];
-  let uniqueCycle = {};
-  const initialAmounts = [1, 10, 20, 30, 50, 100];
-    // Define los diferentes montos a probar
-  g.getAllVertices().forEach((vertex) => {
-    let result = bellmanFord(g, vertex);
-    let cyclePaths = result.cyclePaths;
-    for (var cycle of cyclePaths) {
-      let cycleString = cycle.join('');
-      let cycleWeights = {}; 
-
-      for (let initialAmount of initialAmounts) {
-      let cycleWeight = calculatePathWeight(g, cycle,initialAmount);
-      if (!uniqueCycle[cycleString] && cycleWeight.cycleWeight >= 1 + MINPROFIT) {
-        uniqueCycle[cycleString] = true;
-        let cycleType = classifyCycle(g, cycle);
-        arbitrageData.push({ cycle: cycle, cycleWeight: cycleWeight.cycleWeight, detail: JSON.stringify(cycleWeight.detailedCycle), type: cycleType });
-      }
-    }
-  });
-  return arbitrageData;
-}/*/
-
-async function calcArbitrage(g) {
-  let arbitrageData = [];
-  let uniqueCycle = {};
-
-  const initialAmounts = [1, 10, 20, 30, 50, 100];
-
-  g.getAllVertices().forEach((vertex) => {
-    let result = bellmanFord(g, vertex);
-    let cyclePaths = result.cyclePaths;
-    for (var cycle of cyclePaths) {
-      let cycleString = cycle.join('');
-      let cycleWeights = {};
-
-      for (let initialAmount of initialAmounts) {
-        let cycleWeight = calculatePathWeight(g, cycle, initialAmount);
-        cycleWeights[initialAmount] = cycleWeight.cycleWeight;
-      }
-
-      if (!uniqueCycle[cycleString]) {
-        uniqueCycle[cycleString] = true;
-        let cycleType = classifyCycle(g, cycle);
-        arbitrageData.push({ cycle: cycle, cycleWeights, type: cycleType });
-      }
-    }
-  });
-  return arbitrageData;
-}
-
 async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
   let g: Graph = new Graph(true);
 
@@ -354,10 +211,27 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
     await fetchPoolPrices(g, sushiPools, DEX.Sushiswap, debug);
   }
 
-  let arbitrageData = await calcArbitrage(g);
-  console.log(`Cycles:`, arbitrageData);
-  
-  console.log(`There were ${arbitrageData.length} arbitrage cycles detected.`);
+  let arbitrageData1 = await calcArbitrage(g, 1);
+  let arbitrageData2 = await calcArbitrage(g, 2);
+  let arbitrageData5 = await calcArbitrage(g, 5);
+  let arbitrageData10 = await calcArbitrage(g, 10);
+  let arbitrageData15 = await calcArbitrage(g, 15);
+
+  for (let result of arbitrageData1) {
+    console.log(`Ciclo: ${result.cycle}`);
+    console.log(`Inicio con ${result.initialAmount} unidades, final con ${result.finalAmount.toFixed(2)} unidades, Profit: ${result.cycleWeight.toFixed(2)}`);
+    console.log(`Tipo de ciclo: ${result.type}`);
+    console.log('---');
+  }
+
+  for (let result of arbitrageData10) {
+    console.log(`Ciclo: ${result.cycle}`);
+    console.log(`Inicio con ${result.initialAmount} unidades, final con ${result.finalAmount.toFixed(2)} unidades, Profit: ${result.cycleWeight.toFixed(2)}`);
+    console.log(`Tipo de ciclo: ${result.type}`);
+    console.log('---');
+  }
+
+  console.log(`There were ${arbitrageData1.length + arbitrageData10.length} arbitrage cycles detected.`);
 
   printGraphEdges(g);
 }
