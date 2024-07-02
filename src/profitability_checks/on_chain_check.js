@@ -6,7 +6,7 @@ const {
 } = require('../constants');
 const { verfiy_token_path } = require('./utlis');
 const Quoter = require('@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json');
-const INFURA_URL_VETTING_KEY = 'https://magical-indulgent-firefly.quiknode.pro/741813bbe0a9e3466d3ea4d1f5c527af6cc90801/' //process.env.INFURA_URL_VETTING_KEY;
+const INFURA_URL_VETTING_KEY = 'https://polygon.meowrpc.com' //process.env.INFURA_URL_VETTING_KEY;
 const provider = new ethers.providers.JsonRpcProvider(INFURA_URL_VETTING_KEY);
 
 async function get_amount_out_from_uniswap_V3(liquidity_pool, amount) {
@@ -115,9 +115,13 @@ async function on_chain_check(path_object) {
         ? loan_pool.token_0_usd_price
         : loan_pool.token_1_usd_price;
 
-    if (loan_pool) {
+    /*/if (loan_pool) {
       const start_amount = optimal_amount;
-      let input_amount = optimal_amount;
+      let input_amount = optimal_amount;/*/
+
+      if (loan_pool) {
+        let minAmountToInvest = optimal_amount;
+        let maxAmountToTrade = Infinity;
 
       for (const pool of path) {
         const token_in_decimals =
