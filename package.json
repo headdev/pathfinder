@@ -15,10 +15,12 @@
     "fs": "^0.0.1-security",
     "graphql": "^16.2.0",
     "graphql-request": "^3.7.0",
+    "hardhat": "^2.22.6",
     "inquirer": "^8.2.4",
     "ts-node": "^10.7.0"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@uniswap/v3-periphery": "^1.4.4"
   }
 }
