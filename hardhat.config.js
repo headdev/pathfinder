@@ -1,100 +1,119 @@
-import path from 'path';
-import { HardhatUserConfig } from 'hardhat/types';
-// @ts-ignore
-import { accounts } from './test-wallets.js';
-import { COVERAGE_CHAINID, HARDHAT_CHAINID } from './helpers/constants';
-import { buildForkConfig } from './helper-hardhat-config';
-
+const fs = require('fs');
+//require("@nomicfoundation/hardhat-toolbox");
+//require("@onmychain/hardhat-uniswap-v2-deploy-plugin");
+require("hardhat-deploy");
+require("@tenderly/hardhat-tenderly");
+require("hardhat-contract-sizer");
+require("hardhat-dependency-compiler");
+// Any file that has require('dotenv').config() statement 
+// will automatically load any variables in the root's .env file.
 require('dotenv').config();
 
-import '@nomicfoundation/hardhat-toolbox';
-import 'hardhat-deploy';
-import '@tenderly/hardhat-tenderly';
-import 'hardhat-contract-sizer';
-import 'hardhat-dependency-compiler';
-import '@nomicfoundation/hardhat-chai-matchers';
+const PRIVATE_KEY = process.env.PRIVATE_KEY
+const etherscanKey = process.env.BSSCAN_KEY
+const infraKey = process.env.INFRA_KEY
 
-import { DEFAULT_NAMED_ACCOUNTS } from '@aave/deploy-v3';
+function getRemappings() {
+  return fs
+    .readFileSync('remappings.txt', 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.trim().split('='));
+}
 
-const DEFAULT_BLOCK_GAS_LIMIT = 12450000;
-const HARDFORK = 'london';
-
-const hardhatConfig = {
-  gasReporter: {
-    enabled: true,
-  },
-  contractSizer: {
-    alphaSort: true,
-    runOnCompile: false,
-    disambiguatePaths: false,
-  },
-  solidity: {
-    // Docs for the compiler https://docs.soliditylang.org/en/v0.8.10/using-the-compiler.html
-    version: '0.8.10',
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 100000,
-      },
-      evmVersion: 'london',
-    },
-  },
-  typechain: {
-    outDir: 'types',
-    target: 'ethers-v5',
-  },
-  mocha: {
-    timeout: 0,
-    bail: true,
-  },
-  tenderly: {
-    project: process.env.TENDERLY_PROJECT || '',
-    username: process.env.TENDERLY_USERNAME || '',
-    forkNetwork: '1', //Network id of the network we want to fork
-  },
+module.exports = {
+  defaultNetwork: "hardhat",
   networks: {
-    coverage: {
-      url: 'http://localhost:8555',
-      chainId: COVERAGE_CHAINID,
-      throwOnTransactionFailures: true,
-      throwOnCallFailures: true,
+    mainnet: {
+      url: `https://mainnet.infura.io/v3/${infraKey}`,
+      accounts: [PRIVATE_KEY],
+      //gasPrice: 120 * 1000000000,
+      chainId: 1,
+    },
+    bsc: {
+      url: "https://bsc-dataseed.binance.org/",
+      accounts: [PRIVATE_KEY],
+      // gasPrice: 20000000000,
+      gas: 6000000,
+    },
+    polygon: {
+      url: "https://dry-wispy-arm.matic.quiknode.pro/b3588f8750abfd09b41a9039b676b3fea62eb9f9/",
+      accounts: [PRIVATE_KEY],
+      // gasPrice: 20000000000,
+      gas: 6000000,
     },
     hardhat: {
-      hardfork: HARDFORK,
-      blockGasLimit: DEFAULT_BLOCK_GAS_LIMIT,
-      gas: DEFAULT_BLOCK_GAS_LIMIT,
-      gasPrice: 8000000000,
-      chainId: HARDHAT_CHAINID,
-      throwOnTransactionFailures: true,
-      throwOnCallFailures: true,
-      forking: buildForkConfig(),
       allowUnlimitedContractSize: true,
-      accounts: accounts.map(({ secretKey, balance }: { secretKey: string; balance: string }) => ({
-        privateKey: secretKey,
-        balance,
-      })),
+      chainId: 31337,
+      gasPrice: 20000000000,
+      gas: 6000000,
     },
-    ganache: {
-      url: 'http://ganache:8545',
-      accounts: {
-        mnemonic: 'fox sight canyon orphan hotel grow hedgehog build bless august weather swarm',
-        path: "m/44'/60'/0'/0",
-        initialIndex: 0,
-        count: 20,
-      },
+    goerli: {
+      url: `https://goerli.infura.io/v3/${infraKey}`,
+      accounts: [PRIVATE_KEY],
+      // gas: 2100000,
+      // gasPrice: 8000000000
+    },
+    localhost: {
+      live: false,
+      saveDeployments: true,
+      tags: ["local"],
     },
   },
-  namedAccounts: {
-    ...DEFAULT_NAMED_ACCOUNTS,
-  },
-  external: {
-    contracts: [
+  solidity: {
+    compilers: [
       {
-        artifacts: './temp-artifacts',
-        deploy: 'node_modules/@aave/deploy-v3/dist/deploy',
+        version: "0.8.17",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 2000000,
+          },
+          viaIR: true
+        },
       },
-    ],
+      {
+        version: "0.8.20",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 2000000,
+            details: {
+              yul: true,
+              yulDetails: {
+                stackAllocation: true,
+                optimizerSteps: "dhfoDgvulfnTUtnIf"
+              }
+            }
+          },
+          viaIR: true
+        },
+      },]
   },
-};
-
-export default hardhatConfig;
+  paths: {
+    sources: "./contracts",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts"
+  },
+  mocha: {
+    timeout: 400000000
+  },
+  etherscan: {
+    apiKey: etherscanKey,
+  },
+  preprocess: {
+    eachLine: (hre) => ({
+      transform: (line) => {
+        if (line.match(/^\s*import /i)) {
+          getRemappings().forEach(([find, replace]) => {
+            if (line.match(find)) {
+              line = line.replace(find, replace);
+            }
+          });
+        }
+        return line;
+      },
+    }),
+  },
+}
