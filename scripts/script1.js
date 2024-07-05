@@ -1,26 +1,32 @@
 const hre = require("hardhat");
 
-async function main() {
-  // Get the contract factory
-  const FlashLoan = await hre.ethers.getContractFactory("FlashLoan");
+const { ethers } = require('hardhat')
 
-  // Address of the Aave Pool Addresses Provider
-  // This is the Goerli testnet address, change it for other networks
-  const ADDRESSES_PROVIDER = "0x5E52dEc931FFb32f609681B8438A51c675cc232d";
 
-  // Deploy the contract
-  const flashLoan = await FlashLoan.deploy(ADDRESSES_PROVIDER);
-
-  // Wait for deployment to finish
-  await flashLoan.deployed();
-
-  console.log("FlashLoan contract deployed to:", flashLoan.address);
+async function getBalance(address) {
+  const balance = await ethers.provider.getBalance(address)
+  return balance  //hre.ethers.utils.formatEther(balance)
 }
 
-// Run the deployment
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+async function main() {
+
+  const [deployer] = await ethers.getSigners();
+
+  console.log("Deploying contracts with the account:", deployer.address, await getBalance(deployer.address));
+
+
+  console.log("deploying...");
+  const FlashLoan = await hre.ethers.getContractFactory("FlashLoan");
+  const flashLoan = await FlashLoan.deploy(
+  "0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb"
+  );
+
+  //await flashLoan.deployed();
+
+  console.log("Flash loan contract deployed: ", flashLoan.address);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

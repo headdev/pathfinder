@@ -1,6 +1,4 @@
 const fs = require('fs');
-//require("@nomicfoundation/hardhat-toolbox");
-//require("@onmychain/hardhat-uniswap-v2-deploy-plugin");
 require("hardhat-deploy");
 require("@tenderly/hardhat-tenderly");
 require("hardhat-contract-sizer");
@@ -13,23 +11,14 @@ const PRIVATE_KEY = process.env.PRIVATE_KEY
 const etherscanKey = process.env.BSSCAN_KEY
 const infraKey = process.env.INFRA_KEY
 
-function getRemappings() {
-  return fs
-    .readFileSync('remappings.txt', 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => line.trim().split('='));
-}
+
+
+const endpointUrl = "https://polygon-rpc.com";
+const privateKey = "d882a8e7320b84e38691b8028991959c11c4eeca4b2f6cc945a922aaa9e5d7f5";
 
 module.exports = {
-  defaultNetwork: "hardhat",
+  defaultNetwork: "polygon",
   networks: {
-    mainnet: {
-      url: `https://mainnet.infura.io/v3/${infraKey}`,
-      accounts: [PRIVATE_KEY],
-      //gasPrice: 120 * 1000000000,
-      chainId: 1,
-    },
     bsc: {
       url: "https://bsc-dataseed.binance.org/",
       accounts: [PRIVATE_KEY],
@@ -37,9 +26,13 @@ module.exports = {
       gas: 6000000,
     },
     polygon: {
-      url: "https://dry-wispy-arm.matic.quiknode.pro/b3588f8750abfd09b41a9039b676b3fea62eb9f9/",
-      accounts: [PRIVATE_KEY],
-      // gasPrice: 20000000000,
+      url: endpointUrl,
+      accounts: [privateKey],
+      //url: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com",
+      //accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] :[],
+      //url: "https://polygon-rpc.com",
+      //accounts: [PRIVATE_KEY],
+      gasPrice: 20000000000,
       gas: 6000000,
     },
     hardhat: {
@@ -48,22 +41,12 @@ module.exports = {
       gasPrice: 20000000000,
       gas: 6000000,
     },
-    goerli: {
-      url: `https://goerli.infura.io/v3/${infraKey}`,
-      accounts: [PRIVATE_KEY],
-      // gas: 2100000,
-      // gasPrice: 8000000000
-    },
-    localhost: {
-      live: false,
-      saveDeployments: true,
-      tags: ["local"],
-    },
+    
   },
   solidity: {
     compilers: [
       {
-        version: "0.8.17",
+        version: "0.8.20",
         settings: {
           optimizer: {
             enabled: true,
@@ -96,9 +79,7 @@ module.exports = {
     cache: "./cache",
     artifacts: "./artifacts"
   },
-  mocha: {
-    timeout: 400000000
-  },
+ 
   etherscan: {
     apiKey: etherscanKey,
   },
