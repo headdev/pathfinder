@@ -16,7 +16,7 @@ begin searching for dex cycles repeatedly
 ```bash
 ts-node ./src/program.ts start [OPTIONS]
 ```
-| Option | Description                                              | Type    | Default | Required? |
+| Option |  Description                                              | Type    | Default | Required? |
 |--------|----------------------------------------------------------|---------|---------|-----------|
 | `--tokens`    | Number of highest daily volume tokens             | `number`| `5`     | No        |
 | `--timeout`   | Polling timeout (seconds)                         | `number`| `5`     | No        | 
