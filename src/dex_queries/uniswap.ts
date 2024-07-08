@@ -3,7 +3,7 @@ import { gql } from 'graphql-request'
 /**
  * VARIABLES
  */
-export const ENDPOINT = `https://api.thegraph.com/subgraphs/id/QmdAaDAUDCypVB85eFUkQMkS5DE1HV4s7WJb6iSiygNvAw`;
+export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/b41d57cde8516272369cb320f9e9e8ac/subgraphs/id/EsLGwxyeMMeJuhqWvuLmJEiDKXJ4Z6YsoJreUnyeozco`;
 
 /**
  * QUERIES
