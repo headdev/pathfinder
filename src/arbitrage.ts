@@ -25,6 +25,13 @@ import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE,MINPROFIT } from './constants';
     
   ];
 
+  interface ArbitrageRoute {
+    cycle: string[];
+    cycleWeight: number;
+    detail: string;
+    type: string;
+  }
+
 // Fetch most active tokens 
 async function fetchTokens(first, skip = 0, dex: DEX) {
   let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
