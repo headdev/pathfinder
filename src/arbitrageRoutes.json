@@ -1,0 +1,52 @@
+[
+  {
+    "cycle": [
+      "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+      "0xd6df932a45c0f255f85145f286ea0b292b21c90b",
+      "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+    ],
+    "cycleWeight": 1.2388246506249996,
+    "detail": "[{\"start\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"end\":\"0xd6df932a45c0f255f85145f286ea0b292b21c90b\",\"type\":\"sell\",\"rawWeight\":0.01277908129648485,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xa236278bec0e0677a48527340cfb567b4e6e9adc\"},{\"start\":\"0xd6df932a45c0f255f85145f286ea0b292b21c90b\",\"end\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"type\":\"buy\",\"rawWeight\":87.09741914750634,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xa236278bec0e0677a48527340cfb567b4e6e9adc\"}]",
+    "type": "sell"
+  },
+  {
+    "cycle": [
+      "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619",
+      "0xc2132d05d31c914a87c6611c10748aeb04b58e8f",
+      "0x7ceb23fd6bc0add59e62ac25578270cff1b9f619"
+    ],
+    "cycleWeight": 1.2420469434259356,
+    "detail": "[{\"start\":\"0x7ceb23fd6bc0add59e62ac25578270cff1b9f619\",\"end\":\"0xc2132d05d31c914a87c6611c10748aeb04b58e8f\",\"type\":\"buy\",\"rawWeight\":3246.348670093867,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xbb98b3d2b18aef63a3178023a920971cf5f29be4\"},{\"start\":\"0xc2132d05d31c914a87c6611c10748aeb04b58e8f\",\"end\":\"0x7ceb23fd6bc0add59e62ac25578270cff1b9f619\",\"type\":\"sell\",\"rawWeight\":0.00034374621772185424,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0x4ccd010148379ea531d6c587cfdd60180196f9b1\"}]",
+    "type": "sell"
+  },
+  {
+    "cycle": [
+      "0xd6df932a45c0f255f85145f286ea0b292b21c90b",
+      "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+      "0xd6df932a45c0f255f85145f286ea0b292b21c90b"
+    ],
+    "cycleWeight": 1.2388246506249996,
+    "detail": "[{\"start\":\"0xd6df932a45c0f255f85145f286ea0b292b21c90b\",\"end\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"type\":\"buy\",\"rawWeight\":87.09741914750634,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xa236278bec0e0677a48527340cfb567b4e6e9adc\"},{\"start\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"end\":\"0xd6df932a45c0f255f85145f286ea0b292b21c90b\",\"type\":\"sell\",\"rawWeight\":0.01277908129648485,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xa236278bec0e0677a48527340cfb567b4e6e9adc\"}]",
+    "type": "sell"
+  },
+  {
+    "cycle": [
+      "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+      "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+      "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
+    ],
+    "cycleWeight": 1.2391822063898152,
+    "detail": "[{\"start\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"end\":\"0x3c499c542cef5e3811e1192ce70d8cc03d5c3359\",\"type\":\"buy\",\"rawWeight\":1.0550208238432928,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xd36ec33c8bed5a9f7b6630855f1533455b98a418\"},{\"start\":\"0x3c499c542cef5e3811e1192ce70d8cc03d5c3359\",\"end\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"type\":\"buy\",\"rawWeight\":1.0552836699325865,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xd9abecb39a5885d1e531ed3599adfed620e2fc8a\"}]",
+    "type": "buy"
+  },
+  {
+    "cycle": [
+      "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+      "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+      "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
+    ],
+    "cycleWeight": 1.2391822063898152,
+    "detail": "[{\"start\":\"0x3c499c542cef5e3811e1192ce70d8cc03d5c3359\",\"end\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"type\":\"buy\",\"rawWeight\":1.0552836699325865,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xd9abecb39a5885d1e531ed3599adfed620e2fc8a\"},{\"start\":\"0x2791bca1f2de4661ed88a30c99a7a9449aa84174\",\"end\":\"0x3c499c542cef5e3811e1192ce70d8cc03d5c3359\",\"type\":\"buy\",\"rawWeight\":1.0550208238432928,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xd36ec33c8bed5a9f7b6630855f1533455b98a418\"}]",
+    "type": "buy"
+  }
+]

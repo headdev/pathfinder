@@ -7,8 +7,6 @@ import GraphVertex from './graph_library/GraphVertex';
 import GraphEdge from './graph_library/GraphEdge';
 import bellmanFord from './bellman-ford';
 import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE,MINPROFIT } from './constants';
-import * as fs from 'fs';
-import { writeFileSync } from 'fs';
 
 
 // tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
@@ -294,10 +292,11 @@ function classifyCycle(g, cycle) {
  * @returns array of cycles & negative cycle value
  */
 
-async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
-  let arbitrageData: ArbitrageRoute[] = [];
-  let uniqueCycle: {[key: string]: boolean} = {};
+async function calcArbitrage(g) {
+  let arbitrageData = [];
+  let uniqueCycle = {};
 
+  
   g.getAllVertices().forEach((vertex) => {
     let result = bellmanFord(g, vertex);
     let cyclePaths = result.cyclePaths;
@@ -307,22 +306,12 @@ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
       if (!uniqueCycle[cycleString] && cycleWeight.cycleWeight >= 1 + MINPROFIT) {
         uniqueCycle[cycleString] = true;
         let cycleType = classifyCycle(g, cycle);
-        arbitrageData.push({
-          cycle: cycle,
-          cycleWeight: cycleWeight.cycleWeight,
-          detail: JSON.stringify(cycleWeight.detailedCycle),
-          type: cycleType
-        });
+        arbitrageData.push({ cycle: cycle, cycleWeight: cycleWeight.cycleWeight, detail: JSON.stringify(cycleWeight.detailedCycle), type: cycleType });
       }
     }
   });
   return arbitrageData;
 }
-
-
-function storeArbitrageRoutes(routes: ArbitrageRoute[]) {
-  fs.writeFileSync('arbitrageRoutes.json', JSON.stringify(routes, null, 2));
-} 
 
 async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
   let g: Graph = new Graph(true);
@@ -332,7 +321,7 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
   let tokenIds = await fetchTokens(numberTokens, 0, defaultDex);
   tokenIds.forEach(element => {
     g.addVertex(new GraphVertex(element))
-  })
+  });
 
   if (DEXs.has(DEX.UniswapV3)) {
     let uniPools: Set<string> = await fetchUniswapPools(tokenIds);
@@ -348,8 +337,6 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
   
   console.log(`There were ${arbitrageData.length} arbitrage cycles detected.`);
 
-  storeArbitrageRoutes(arbitrageData);
-
   printGraphEdges(g);
 }
 
@@ -359,8 +346,6 @@ function printGraphEdges(g) {
     console.log(`${edge.startVertex} -> ${edge.endVertex} | ${edge.rawWeight} | DEX: ${edge.metadata.dex}`);
   }
 }
-
-
 
 export {
   main

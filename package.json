@@ -21,6 +21,7 @@
     "binance": "^2.11.5",
     "commander": "^9.2.0",
     "fs": "^0.0.1-security",
+    "fs-extra": "^11.2.0",
     "graphql": "^16.2.0",
     "graphql-request": "^3.7.0",
     "hardhat-chai-matchers": "^0.0.1",
