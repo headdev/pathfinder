@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import * as ARB from './arbitrage';
+import * as ARB from './arbitrage_old4';
 import { DEFAULT_TOKEN_NUMBER, DEFAULT_TIMEOUT, DEX } from './constants';
 import { sleep } from './utils';
 
@@ -11,7 +11,7 @@ program
     .command('start')
     .option('--tokens <number>', 'number of highest daily volume tokens to consider')
     .option('--timeout <seconds>', 'polling timeout')
-    .option('--dex <dexes...>', 'select considered dexes (uniswap, sushiswap, or both)')
+    .option('-x --dex', 'select considered dexes')
     .option('-d --debug', 'enable debug mode')
     .description('begin searching for dex cycles repeatedly')
     .action(async (options) => {
@@ -29,7 +29,7 @@ program
 program
     .command('run')
     .option('--tokens <number>', 'number of highest daily volume tokens to consider')
-    .option('--dex <dexes...>', 'select considered dexes (uniswap, sushiswap, or both)')
+    .option('-x --dex', 'select considered dexes')
     .option('-d --debug', 'enable debug mode')
     .description('search once for dex cycles')
     .action(async (options) => {
@@ -42,22 +42,11 @@ program
 async function parseDexs(options: any) {
     let dexs: Set<DEX> = new Set();
     if (options.dex) {
-        if (Array.isArray(options.dex)) {
-            if (options.dex.includes('uniswap') || options.dex.includes('both')) dexs.add(DEX.UniswapV3);
-            if (options.dex.includes('sushiswap') || options.dex.includes('both')) dexs.add(DEX.Sushiswap);
-        } else {
-            const dexAnswers = await inquireDex();
-            if (dexAnswers.DEXs.includes('UniswapV3')) dexs.add(DEX.UniswapV3);
-            if (dexAnswers.DEXs.includes('Sushiswap')) dexs.add(DEX.Sushiswap);
-            if (dexAnswers.DEXs.includes('Both')) {
-                dexs.add(DEX.UniswapV3);
-                dexs.add(DEX.Sushiswap);
-            }
-        }
+        const dexAnswers = await inquireDex();
+        (dexAnswers.DEXs.includes('UniswapV3')) ? dexs.add(DEX.UniswapV3) : null;
+        (dexAnswers.DEXs.includes('Sushiswap')) ? dexs.add(DEX.Sushiswap) : null;
     } else {
-        // Si no se especifica, usa ambos por defecto
-        dexs.add(DEX.UniswapV3);
-        dexs.add(DEX.Sushiswap);
+        Object.keys(DEX).filter((v) => !isNaN(Number(v))).forEach((key, index) => { dexs.add(index); });
     }
     return dexs;
 }
@@ -66,16 +55,12 @@ async function inquireDex() {
     return inquirer
                 .prompt([
                     {
-                        type: 'list',
+                        type: 'checkbox',
                         message: 'Select DEXs',
                         name: 'DEXs',
-                        choices: [
-                            { name: 'UniswapV3' },
-                            { name: 'Sushiswap' },
-                            { name: 'Both (UniswapV3 and Sushiswap)' }
-                        ],
+                        choices: [{ name: 'UniswapV3' }, { name: 'Sushiswap' } ],
                         validate(answer) {
-                            if (answer.length < 1) return 'You must choose at least one option.';
+                            if (answer.length < 1) return 'You must choose at least one DEX.';
                             return true;
                         },
                     },
