@@ -1,0 +1,1 @@
+// con esta nueva funcion para a comprobar si las rutas, generan utilidad 

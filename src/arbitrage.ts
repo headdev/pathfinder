@@ -102,7 +102,8 @@ function calculatePathWeight(g, cycle) {
       rawWeight: edge.rawWeight,
       dexnombre: dexName,
       dex: edge.metadata.dex, 
-      poolAddress: edge.metadata.address
+      poolAddress: edge.metadata.address,
+      feeTier: edge.metadata.fee // Añadimos el feeTier aquí
     });
 
   }
