@@ -1,6 +1,11 @@
 import { gql } from 'graphql-request'
+import * as dotenv from 'dotenv';
+dotenv.config();
 
-export const ENDPOINT = `https://api.thegraph.com/subgraphs/name/sushiswap/matic-exchange`;
+
+
+export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/8obLTNcEuGMieUt6jmrDaQUhWyj2pys26ULeP3gFiGNv
+`;
 
 export function PAIR(id) {
     return gql`

@@ -1,9 +1,16 @@
 import { gql } from 'graphql-request'
 
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+
 /**
  * VARIABLES
  */
-export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/b41d57cde8516272369cb320f9e9e8ac/subgraphs/id/EsLGwxyeMMeJuhqWvuLmJEiDKXJ4Z6YsoJreUnyeozco`;
+dotenv.config();
+export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/EsLGwxyeMMeJuhqWvuLmJEiDKXJ4Z6YsoJreUnyeozco`;
 
 /**
  * QUERIES

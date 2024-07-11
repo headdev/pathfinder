@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import * as ARB from './arbitrage_old4';
+import * as ARB from './arbitrage_old3';
 import { DEFAULT_TOKEN_NUMBER, DEFAULT_TIMEOUT, DEX } from './constants';
 import { sleep } from './utils';
 
