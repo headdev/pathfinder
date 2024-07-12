@@ -2,6 +2,9 @@ import { gql } from 'graphql-request'
 import * as dotenv from 'dotenv';
 dotenv.config();
 
+import * as path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 
 export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/8obLTNcEuGMieUt6jmrDaQUhWyj2pys26ULeP3gFiGNv
@@ -38,7 +41,7 @@ export function PAIRS(ids) {
     }`
 }
 
-export function HIGHEST_VOLUME_TOKENS(first, skip = 0, orderby = "volumeUSD", orderDirection = "desc") {
+export function HIGHEST_VOLUME_TOKENS(first, skip = 0, orderby = "tradeVolumeUSD", orderDirection = "desc") {
   return gql`
     {
         tokens(first: ${first}, skip: ${skip}, orderBy: ${orderby}, orderDirection:${orderDirection}) {
