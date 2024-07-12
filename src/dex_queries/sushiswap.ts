@@ -2,12 +2,9 @@ import { gql } from 'graphql-request'
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import * as path from 'path';
-
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 
-export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/8obLTNcEuGMieUt6jmrDaQUhWyj2pys26ULeP3gFiGNv
+export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/CKaCne3uUUEqT7Ei9jjZbQqTLntEno9LnFa4JnsqqBma
 `;
 
 export function PAIR(id) {
@@ -18,7 +15,7 @@ export function PAIR(id) {
           token1 { id, symbol }
           token0Price
           token1Price
-          reserveUSD
+          liquidityUSD
         }
       }
     `
@@ -41,7 +38,7 @@ export function PAIRS(ids) {
     }`
 }
 
-export function HIGHEST_VOLUME_TOKENS(first, skip = 0, orderby = "tradeVolumeUSD", orderDirection = "desc") {
+export function HIGHEST_VOLUME_TOKENS(first, skip = 0, orderby = "volumeUSD", orderDirection = "desc") {
   return gql`
     {
         tokens(first: ${first}, skip: ${skip}, orderBy: ${orderby}, orderDirection:${orderDirection}) {

@@ -201,35 +201,4 @@ export default class Graph {
     toString(): string {
       return Object.keys(this.vertices).toString();
     }
-
-    /**
-     * @param {GraphVertex} startVertex
-     * @param {GraphVertex} endVertex
-     * @param {GraphEdge} newEdge
-     * @returns {Graph}
-     */
-    updateEdge(startVertex: GraphVertex, endVertex: GraphVertex, newEdge: GraphEdge): Graph {
-        const edge = this.findEdge(startVertex, endVertex);
-        if (edge) {
-            // Actualizar los valores del borde existente
-            edge.weight = newEdge.weight;
-            edge.rawWeight = newEdge.rawWeight;
-            edge.metadata = newEdge.metadata;
-
-            // Si el grafo no es dirigido, actualizar también el borde inverso
-            if (!this.isDirected) {
-                const reverseEdge = this.findEdge(endVertex, startVertex);
-                if (reverseEdge) {
-                    reverseEdge.weight = -newEdge.weight; // El peso se invierte para el borde inverso
-                    reverseEdge.rawWeight = 1 / newEdge.rawWeight; // El rawWeight se invierte para el borde inverso
-                    reverseEdge.metadata = newEdge.metadata;
-                }
-            }
-        } else {
-            // Si el borde no existe, añadirlo
-            this.addEdge(newEdge);
-        }
-
-        return this;
-    }
 }

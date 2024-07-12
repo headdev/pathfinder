@@ -30,23 +30,39 @@ interface ArbitrageRoute {
   type: string;
 }
 
-async function fetchTokens(first, skip = 0, dex: DEX) {
-  let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
-  let tokensQuery = (dex === DEX.UniswapV3) ? UNISWAP.HIGHEST_VOLUME_TOKENS(first) : SUSHISWAP.HIGHEST_VOLUME_TOKENS(first, skip);
-  let mostActiveTokens = await request(dexEndpoint, tokensQuery);
+async function fetchTokens(first: number, dexes: DEX[]): Promise<string[]> {
+  let allTokens = new Map<string, { id: string, volume: number }>();
 
-  if (!mostActiveTokens || !mostActiveTokens.tokens) {
-    console.error('No se encontraron tokens en la respuesta:', mostActiveTokens);
-    return [];
+  for (const dex of dexes) {
+    let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
+    let tokensQuery = (dex === DEX.UniswapV3) ? UNISWAP.HIGHEST_VOLUME_TOKENS(first) : SUSHISWAP.HIGHEST_VOLUME_TOKENS(first, 0);
+    
+    let mostActiveTokens = await request(dexEndpoint, tokensQuery);
+
+    if (!mostActiveTokens || !mostActiveTokens.tokens) {
+      console.error(`No se encontraron tokens en la respuesta para ${dex}:`, mostActiveTokens);
+      continue;
+    }
+
+    mostActiveTokens.tokens
+      .filter(t => ALLOWED_TOKENS.includes(t.id))
+      .forEach(t => {
+        if (allTokens.has(t.id)) {
+          allTokens.get(t.id).volume += Number(t.volumeUSD);
+        } else {
+          allTokens.set(t.id, { id: t.id, volume: Number(t.volumeUSD) });
+        }
+      });
   }
 
-  let top20Tokens = mostActiveTokens.tokens
-    .filter(t => ALLOWED_TOKENS.includes(t.id))
-    .slice(0, 9);
+  let sortedTokens = Array.from(allTokens.values())
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, first)
+    .map(t => t.id);
 
-  console.log(`Tokens:`, top20Tokens);
+  console.log(`Tokens combinados:`, sortedTokens);
 
-  return top20Tokens.map((t) => { return t.id });
+  return sortedTokens;
 }
 
 function classifyEdge(g, startKey, endKey) {
@@ -92,63 +108,80 @@ function calculatePathWeight(g, cycle) {
 }
 
 async function fetchUniswapPools(tokenIds) {
-  let pools = new Set<string>();
-  let tokenIdsSet = new Set(tokenIds);
+  try {
+    let pools = new Set<string>();
+    let tokenIdsSet = new Set(tokenIds);
 
-  for (let id of tokenIds) {
-    let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
-    let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
+    for (let id of tokenIds) {
+      let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
+      let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
 
-    for (let pool of whitelistPools) {
-      let otherToken = (pool.token0.id === id) ? pool.token1.id : pool.token0.id;
-      if (tokenIdsSet.has(otherToken)) {
-        pools.add(pool.id)
+      for (let pool of whitelistPools) {
+        let otherToken = (pool.token0.id === id) ? pool.token1.id : pool.token0.id;
+        if (tokenIdsSet.has(otherToken)) {
+          pools.add(pool.id)
+        }
       }
     }
+    console.log(`Uniswap pools found: ${pools.size}`);
+    return pools;
+  } catch (error) {
+    console.error("Error fetching Uniswap pools:", error);
+    return new Set<string>();
   }
-  return pools;
 }
 
 async function fetchSushiswapPools(tokenIds) {
-  let pools = new Set<string>();
-  let poolsDataRaw = await request(SUSHISWAP.ENDPOINT, SUSHISWAP.PAIRS(tokenIds));
-  let poolsData = poolsDataRaw.pairs;
+  try {
+    let pools = new Set<string>();
+    let poolsDataRaw = await request(SUSHISWAP.ENDPOINT, SUSHISWAP.PAIRS(tokenIds));
+    let poolsData = poolsDataRaw.pairs;
 
-  for (let pool of poolsData) {
-    pools.add(pool.id);
+    for (let pool of poolsData) {
+      pools.add(pool.id);
+    }
+    console.log(`Sushiswap pools found: ${pools.size}`);
+    return pools;
+  } catch (error) {
+    console.error("Error fetching Sushiswap pools:", error);
+    return new Set<string>();
   }
-  return pools;
 }
 
 async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false) {
   if (debug) console.log(pools);
   for (var pool of Array.from(pools.values())) {
-    if (debug) console.log(dex, pool);
-    let DEX_ENDPOINT = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
-    let DEX_QUERY = (dex === DEX.UniswapV3) ? UNISWAP.fetch_pool(pool) : SUSHISWAP.PAIR(pool);
+    try {
+      if (debug) console.log(dex, pool);
+      let DEX_ENDPOINT = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
+      let DEX_QUERY = (dex === DEX.UniswapV3) ? UNISWAP.fetch_pool(pool) : SUSHISWAP.PAIR(pool);
 
-    let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
-    console.log("poolRequest", poolRequest);
-    
-    let poolData = (dex === DEX.UniswapV3) ? poolRequest.pool : poolRequest.pair;
-    if (debug) console.log(poolData);
-
-    let reserves = (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : Number(poolData.reserveUSD);
-    if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
-      let vertex0 = g.getVertexByKey(poolData.token0.id);
-      let vertex1 = g.getVertexByKey(poolData.token1.id);
-
-      let token1Price = Number(poolData.token1Price);
-      let token0Price = Number(poolData.token0Price);
-      let fee = Number(poolData.feeTier);
+      let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
+      if (debug) console.log("poolRequest", poolRequest);
       
-      let forwardEdge = new GraphEdge(vertex0, vertex1, -Math.log(Number(token1Price)), token1Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
-      let backwardEdge = new GraphEdge(vertex1, vertex0, -Math.log(Number(token0Price)), token0Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
+      let poolData = (dex === DEX.UniswapV3) ? poolRequest.pool : poolRequest.pair;
+      if (debug) console.log(poolData);
 
-      g.addEdge(forwardEdge);
-      g.addEdge(backwardEdge);
+      let reserves = (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : Number(poolData.reserveUSD);
+      if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
+        let vertex0 = g.getVertexByKey(poolData.token0.id);
+        let vertex1 = g.getVertexByKey(poolData.token1.id);
+
+        let token1Price = Number(poolData.token1Price);
+        let token0Price = Number(poolData.token0Price);
+        let fee = Number(poolData.feeTier);
+        
+        let forwardEdge = new GraphEdge(vertex0, vertex1, -Math.log(Number(token1Price)), token1Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
+        let backwardEdge = new GraphEdge(vertex1, vertex0, -Math.log(Number(token0Price)), token0Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
+
+        g.updateEdge(vertex0, vertex1, forwardEdge);
+        g.updateEdge(vertex1, vertex0, backwardEdge);
+      }
+    } catch (error) {
+      console.error(`Error fetching pool ${pool} for ${dex}:`, error);
     }
   }
+  console.log(`Finished processing ${pools.size} pools for ${dex}`);
 }
 
 function classifyCycle(g, cycle) {
@@ -173,12 +206,15 @@ function classifyCycle(g, cycle) {
 }
 
 async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
+  console.log("Starting arbitrage calculation...");
   let arbitrageData: ArbitrageRoute[] = [];
   let uniqueCycle: {[key: string]: boolean} = {};
 
   g.getAllVertices().forEach((vertex) => {
+    console.log(`Calculating for vertex: ${vertex.getKey()}`);
     let result = bellmanFord(g, vertex);
     let cyclePaths = result.cyclePaths;
+    console.log(`Found ${cyclePaths.length} cycle paths for vertex ${vertex.getKey()}`);
     for (var cycle of cyclePaths) {
       let cycleString = cycle.join('');
       let cycleWeight = calculatePathWeight(g, cycle);
@@ -194,6 +230,7 @@ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
       }
     }
   });
+  console.log(`Arbitrage calculation complete. Found ${arbitrageData.length} opportunities.`);
   return arbitrageData;
 }
 
@@ -204,29 +241,29 @@ function storeArbitrageRoutes(routes: ArbitrageRoute[]) {
 async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
   let g: Graph = new Graph(true);
 
-  let tokenIds = new Set<string>();
+  console.log("Fetching tokens...");
+  let tokenIds = await fetchTokens(numberTokens, Array.from(DEXs));
+  console.log("Tokens obtained, creating vertices...");
 
-  // Convertir Set<DEX> a Array
-  const dexArray = Array.from(DEXs);
-
-  for (const dex of dexArray) {
-    let dexTokenIds = await fetchTokens(numberTokens, 0, dex);
-    dexTokenIds.forEach(id => tokenIds.add(id));
-  }
-
-  Array.from(tokenIds).forEach(element => {
-    g.addVertex(new GraphVertex(element))
+  tokenIds.forEach(id => {
+    g.addVertex(new GraphVertex(id))
   });
+  console.log("Vertices created. Fetching pools...");
 
   if (DEXs.has(DEX.UniswapV3)) {
-    let uniPools: Set<string> = await fetchUniswapPools(Array.from(tokenIds));
+    console.log("Fetching Uniswap V3 pools...");
+    let uniPools: Set<string> = await fetchUniswapPools(tokenIds);
+    console.log(`Fetched ${uniPools.size} Uniswap V3 pools. Getting prices...`);
     await fetchPoolPrices(g, uniPools, DEX.UniswapV3, debug);
   }
   if (DEXs.has(DEX.Sushiswap)) {
-    let sushiPools: Set<string> = await fetchSushiswapPools(Array.from(tokenIds));
+    console.log("Fetching Sushiswap pools...");
+    let sushiPools: Set<string> = await fetchSushiswapPools(tokenIds);
+    console.log(`Fetched ${sushiPools.size} Sushiswap pools. Getting prices...`);
     await fetchPoolPrices(g, sushiPools, DEX.Sushiswap, debug);
   }
 
+  console.log("All prices obtained. Calculating arbitrage...");
   let arbitrageData = await calcArbitrage(g);
   console.log(`Cycles:`, arbitrageData);
   
@@ -240,9 +277,13 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
 function printGraphEdges(g) {
   let edges = g.getAllEdges();
   for (let edge of edges) {
-    console.log(`${edge.startVertex} -> ${edge.endVertex} | ${edge.rawWeight} | DEX: ${edge.metadata.dex}`);
+    console.log(`${edge.startVertex.getKey()} -> ${edge.endVertex.getKey()} | ${edge.rawWeight} | DEX: ${edge.metadata.dex}`);
   }
 }
+
+main(5, new Set([DEX.UniswapV3, DEX.Sushiswap]), true)
+  .then(() => console.log("Script completed successfully"))
+  .catch(error => console.error("An error occurred during execution:", error));
 
 export {
   main
