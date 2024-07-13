@@ -1,10 +1,9 @@
 import { gql } from 'graphql-request'
-import * as dotenv from 'dotenv';
-dotenv.config();
 
 
 
-export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/CKaCne3uUUEqT7Ei9jjZbQqTLntEno9LnFa4JnsqqBma
+
+export const ENDPOINT = `https://gateway-arbitrum.network.thegraph.com/api/${process.env.THEGRAPH_API_KEY}/subgraphs/id/8NiXkxLRT3R22vpwLB4DXttpEf3X1LrKhe4T1tQ3jjbP
 `;
 
 export function PAIR(id) {
@@ -15,7 +14,7 @@ export function PAIR(id) {
           token1 { id, symbol }
           token0Price
           token1Price
-          liquidityUSD
+          reserveUSD
         }
       }
     `
