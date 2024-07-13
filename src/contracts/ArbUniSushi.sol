@@ -33,7 +33,7 @@ interface IWETH9 {
     event Withdrawal(address indexed src, uint256 wad);
 }
 
-contract MyContract {
+contract ArbUniSushi {
     address constant WETH_ADDRESS = 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6;
     address constant UNISWAP_ROUTER_ADDRESS = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     address constant SUSHISWAP_ROUTER_ADDRESS = 0x0dc8E47a1196bcB590485eE8bF832c5c68A52f4B;

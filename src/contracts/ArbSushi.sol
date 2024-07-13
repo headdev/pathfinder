@@ -18,7 +18,7 @@ interface IERC20 {
     function balanceOf(address account) external view returns (uint256);
 }
 
-contract Arbitrage {
+contract ArbSushi {
     address public owner;
     address public sushiSwapRouter = 0x0dc8E47a1196bcB590485eE8bF832c5c68A52f4B; // SushiSwap Router en Polygon
 
