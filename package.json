@@ -20,6 +20,7 @@
     "@openzeppelin/contracts": "^5.0.2",
     "binance": "^2.11.5",
     "commander": "^9.2.0",
+    "ethers-multicall": "^0.2.3",
     "fs": "^0.0.1-security",
     "fs-extra": "^11.2.0",
     "graphql": "^16.2.0",

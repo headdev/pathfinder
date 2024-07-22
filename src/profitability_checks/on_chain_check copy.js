@@ -9,18 +9,10 @@ const { verfiy_token_path } = require('./utlis');
 const Quoter = require('@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json');
 const { abi: QuoterABI } = require('@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json');
 const INFURA_URL_VETTING_KEY = 'https://polygon.meowrpc.com';
-
 const provider = new ethers.JsonRpcProvider(INFURA_URL_VETTING_KEY);
-
-
-
 
 async function get_amount_out_from_uniswap_V3(liquidity_pool, amount) {
   try {
-    console.log('Entering get_amount_out_from_uniswap_V3');
-    console.log('Liquidity pool:', JSON.stringify(liquidity_pool, null, 2));
-    console.log('Amount:', amount);
-
     const {
       token0,
       token1,
@@ -28,65 +20,41 @@ async function get_amount_out_from_uniswap_V3(liquidity_pool, amount) {
       token_out,
       fee,
     } = liquidity_pool;
+   
 
     const token_in_decimals =
       token_in === token0.id ? token0.decimals : token1.decimals;
     const token_out_decimals =
       token_out === token0.id ? token0.decimals : token1.decimals;
 
-    console.log('QUOTER_CONTRACT_ADDRESS:', QUOTER_CONTRACT_ADDRESS);
-
-    if (!QUOTER_CONTRACT_ADDRESS) {
-      throw new Error('QUOTER_CONTRACT_ADDRESS is not defined');
-    }
-
     const uniswap_V3_quoter_contract = new ethers.Contract(
       QUOTER_CONTRACT_ADDRESS,
-      QuoterABI,
+      Quoter.abi,
       provider
     );
-
-    console.log('uniswap_V3_quoter_contract created');
-    console.log('Contract address:', uniswap_V3_quoter_contract.address);
-    console.log('Contract functions:', Object.keys(uniswap_V3_quoter_contract.functions));
-
     const amouunt_in_parsed_big_int = ethers.parseUnits(
-      amount.toString(),
+      amount,
       token_in_decimals
     );
 
-    console.log('Calling quoteExactInputSingle with params:', {
-      tokenIn: token_in,
-      tokenOut: token_out,
-      fee: Number(fee),
-      amountIn: amouunt_in_parsed_big_int.toString(),
-      sqrtPriceLimitX96: 0
-    });
 
-    const quotedAmountOut = await uniswap_V3_quoter_contract.quoteExactInputSingle.staticCall(
-      token_in,
-      token_out,
-      Number(fee),
-      amouunt_in_parsed_big_int,
-      0
-    );
-
-    console.log('quotedAmountOut:', quotedAmountOut.toString());
+    const quotedAmountOut =
+      await uniswap_V3_quoter_contract.callStatic.quoteExactInputSingle(
+        token_in, // input token
+        token_out, // output token
+        Number(fee),
+        amouunt_in_parsed_big_int,
+        0
+      );
 
     const parsed_amounts_out = ethers.formatUnits(
       quotedAmountOut,
       token_out_decimals
     );
 
-    console.log('parsed_amounts_out:', parsed_amounts_out);
-
     return parsed_amounts_out;
   } catch (error) {
-    console.error('Error in get_amount_out_from_uniswap_V3:', error);
-    if (error.message.includes('execution reverted')) {
-      console.error('Contract execution reverted. This could be due to insufficient liquidity or other on-chain issues.');
-    }
-    throw error;  // Re-throw the error to be handled by the calling function
+    console.error(error);
   }
 }
 
