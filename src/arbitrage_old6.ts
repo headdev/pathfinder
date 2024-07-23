@@ -14,11 +14,13 @@ import { ethers } from 'ethers';
 
 const INITIAL_MATIC = 100;
 const AAVE_INTEREST_RATE = 0.0005; // 0.05%
-const WMATIC_ADDRESS = '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
+const INITIAL_MATIC_GWEI = ethers.parseUnits('100', 'gwei').toString(); // 100 GWEI
+const WMATIC_ADDRESS = "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270";
 
 // tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
 const ALLOWED_TOKENS = [
   '0x28424507a5bbfd333006bf08e9b1913f087f7ef4',
+  "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
   "0x80cA0d8C38d2e2BcbaB66aA1648Bd1C7160500FE",
   "0x2aeB3AcBEb4C604451C560d89D88d95d54C2C2cC",
   "0xdF7837DE1F2Fa4631D716CF2502f8b230F1dcc32",
@@ -260,80 +262,42 @@ function classifyCycle(g, cycle) {
   return (buyCount > sellCount) ? 'buy' : 'sell';
 }
 
-async function calculateInitialAmount(originTokenAddress) {
+async function calculateInitialAmount(originTokenAddress: string): Promise<string> {
   try {
+    console.log(`Calculating initial amount for token: ${originTokenAddress}`);
     const maticToOriginToken = await get_amount_out_from_uniswap_V3({
       token0: { id: WMATIC_ADDRESS, decimals: 18 },
       token1: { id: originTokenAddress, decimals: 18 },
       token_in: WMATIC_ADDRESS,
       token_out: originTokenAddress,
-      fee: 3000
-    }, INITIAL_MATIC.toString());
+      fee: 3000 // Asume un fee de 0.3%, ajusta según sea necesario
+    }, INITIAL_MATIC_GWEI);
 
-    return parseFloat(maticToOriginToken);
+    console.log(`MATIC to Origin Token conversion result: ${maticToOriginToken}`);
+
+    if (maticToOriginToken === undefined) {
+      console.error('get_amount_out_from_uniswap_V3 returned undefined');
+      return '0';
+    }
+
+    return maticToOriginToken;
   } catch (error) {
     console.error('Error in calculateInitialAmount:', error);
-    return 0; // or some default value
+    return '0';
   }
 }
 
-function calculateMaxLoanAmount(initialAmount: number): number {
-  if (isNaN(initialAmount) || initialAmount <= 0) {
+function calculateMaxLoanAmount(initialAmount: string): string {
+  if (initialAmount === '0') {
     console.error('Invalid initialAmount in calculateMaxLoanAmount:', initialAmount);
-    return 0;
+    return '0';
   }
-  return initialAmount / AAVE_INTEREST_RATE;
+  const initialAmountBN = ethers.getBigInt(initialAmount);
+  const aaveInterestRateBN = ethers.parseUnits(AAVE_INTEREST_RATE.toString(), 18);
+  return (initialAmountBN / aaveInterestRateBN).toString();
 }
-async function calculateRouteProfit(route: ArbitrageRoute, amount: number): Promise<number> {
-  if (isNaN(amount) || amount <= 0) {
-    console.error('Invalid amount in calculateRouteProfit:', amount);
-    return 0;
-  }
 
-  let currentAmount = amount;
-  const steps = JSON.parse(route.detail);
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    try {
-      let result;
-      if (route.dexes[i] === DEX.UniswapV3) {
-        result = await get_amount_out_from_uniswap_V3({
-          token0: { id: step.start },
-          token1: { id: step.end },
-          token_in: step.start,
-          token_out: step.end,
-          fee: step.feeTier
-        }, currentAmount.toString());
-      } else {
-        result = await get_amount_out_from_uniswap_V2_and_sushiswap({
-          token0: { id: step.start },
-          token1: { id: step.end },
-          token_in: step.start,
-          token_out: step.end,
-          exchange: step.dexnombre.toLowerCase()
-        }, currentAmount.toString());
-      }
-
-      if (result === undefined) {
-        console.error('get_amount_out returned undefined for step:', step);
-        return 0;
-      }
-
-      currentAmount = parseFloat(result);
-
-      if (isNaN(currentAmount)) {
-        console.error('Invalid currentAmount after step:', step);
-        return 0;
-      }
-    } catch (error) {
-      console.error('Error in calculateRouteProfit step:', error);
-      return 0;
-    }
-  }
-
-  return currentAmount - amount;
-}
 
 async function calculateProfitsForDifferentAmounts(route: ArbitrageRoute, maxLoanAmount: number): Promise<{ amount: number; profit: number }[]> {
   const amounts = [
