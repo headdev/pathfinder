@@ -7,7 +7,7 @@ import Graph from './graph_library/Graph';
 import GraphVertex from './graph_library/GraphVertex';
 import GraphEdge from './graph_library/GraphEdge';
 import bellmanFord from './bellman-ford';
-import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE, MINPROFIT } from './constants';
+import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE, MINPROFIT, QUOTER_CONTRACT_ADDRESS} from './constants';
 import * as fs from 'fs';
 import * as path from 'path';
 import { get_amount_out_from_uniswap_V3, get_amount_out_from_uniswap_V2_and_sushiswap } from './profitability_checks/on_chain_check';
@@ -20,6 +20,7 @@ const WMATIC_ADDRESS = '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
 // tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
 const ALLOWED_TOKENS = [
   '0x28424507a5bbfd333006bf08e9b1913f087f7ef4',
+  "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
   "0x80cA0d8C38d2e2BcbaB66aA1648Bd1C7160500FE",
   "0x2aeB3AcBEb4C604451C560d89D88d95d54C2C2cC",
   "0xdF7837DE1F2Fa4631D716CF2502f8b230F1dcc32",
