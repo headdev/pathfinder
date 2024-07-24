@@ -38,6 +38,7 @@
     "@nomicfoundation/hardhat-ignition": "^0.15.5",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@nomicfoundation/ignition-core": "^0.15.5",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
     "@tenderly/hardhat-tenderly": "^2.2.2",
     "@types/chai": "4.2.11",
     "@types/dotenv": "^8.2.0",

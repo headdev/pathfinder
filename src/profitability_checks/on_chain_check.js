@@ -8,31 +8,26 @@ const {
 const { verfiy_token_path } = require('./utlis');
 const Quoter = require('@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json');
 const { abi: QuoterABI } = require('@uniswap/v3-periphery/artifacts/contracts/lens/Quoter.sol/Quoter.json');
+
+
+// Asegúrate de que esta URL esté configurada correctamente
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+const quoterContract = new ethers.Contract(QUOTER_CONTRACT_ADDRESS, QuoterABI, provider);
 const INFURA_URL_VETTING_KEY = 'https://polygon.meowrpc.com';
 
-const provider = new ethers.JsonRpcProvider(INFURA_URL_VETTING_KEY);
+//const provider = new ethers.JsonRpcProvider(INFURA_URL_VETTING_KEY);
 
-
-
-
-async function get_amount_out_from_uniswap_V3(liquidity_pool, amount) {
+export async function get_amount_out_from_uniswap_V3(params, amount) {
   try {
     console.log('Entering get_amount_out_from_uniswap_V3');
-    console.log('Liquidity pool:', JSON.stringify(liquidity_pool, null, 2));
+    console.log('Params:', JSON.stringify(params, null, 2));
     console.log('Amount:', amount);
 
     const {
-      token0,
-      token1,
       token_in,
       token_out,
       fee,
-    } = liquidity_pool;
-
-    const token_in_decimals =
-      token_in === token0.id ? token0.decimals : token1.decimals;
-    const token_out_decimals =
-      token_out === token0.id ? token0.decimals : token1.decimals;
+    } = params;
 
     console.log('QUOTER_CONTRACT_ADDRESS:', QUOTER_CONTRACT_ADDRESS);
 
@@ -40,53 +35,35 @@ async function get_amount_out_from_uniswap_V3(liquidity_pool, amount) {
       throw new Error('QUOTER_CONTRACT_ADDRESS is not defined');
     }
 
-    const uniswap_V3_quoter_contract = new ethers.Contract(
-      QUOTER_CONTRACT_ADDRESS,
-      QuoterABI,
-      provider
-    );
+    console.log('Quoter contract address:', quoterContract.address);
 
-    console.log('uniswap_V3_quoter_contract created');
-    console.log('Contract address:', uniswap_V3_quoter_contract.address);
-    console.log('Contract functions:', Object.keys(uniswap_V3_quoter_contract.functions));
-
-    const amouunt_in_parsed_big_int = ethers.parseUnits(
-      amount.toString(),
-      token_in_decimals
-    );
+    const amountIn = ethers.parseUnits(amount, 18);
 
     console.log('Calling quoteExactInputSingle with params:', {
       tokenIn: token_in,
       tokenOut: token_out,
       fee: Number(fee),
-      amountIn: amouunt_in_parsed_big_int.toString(),
+      amountIn: amountIn.toString(),
       sqrtPriceLimitX96: 0
     });
 
-    const quotedAmountOut = await uniswap_V3_quoter_contract.quoteExactInputSingle.staticCall(
+    const quotedAmountOut = await quoterContract.quoteExactInputSingle.staticCall(
       token_in,
       token_out,
       Number(fee),
-      amouunt_in_parsed_big_int,
+      amountIn,
       0
     );
 
     console.log('quotedAmountOut:', quotedAmountOut.toString());
 
-    const parsed_amounts_out = ethers.formatUnits(
-      quotedAmountOut,
-      token_out_decimals
-    );
+    const result = ethers.formatUnits(quotedAmountOut, 18);
+    console.log('Formatted result:', result);
 
-    console.log('parsed_amounts_out:', parsed_amounts_out);
-
-    return parsed_amounts_out;
+    return result;
   } catch (error) {
     console.error('Error in get_amount_out_from_uniswap_V3:', error);
-    if (error.message.includes('execution reverted')) {
-      console.error('Contract execution reverted. This could be due to insufficient liquidity or other on-chain issues.');
-    }
-    throw error;  // Re-throw the error to be handled by the calling function
+    return '0';
   }
 }
 
@@ -95,6 +72,10 @@ async function get_amount_out_from_uniswap_V2_and_sushiswap(
   amount
 ) {
   try {
+    console.log('Entering get_amount_out_from_uniswap_V2_and_sushiswap');
+    console.log('Liquidity pool:', JSON.stringify(liquidity_pool, null, 2));
+    console.log('Amount:', amount);
+
     const {
       token0,
       token1,
@@ -102,8 +83,6 @@ async function get_amount_out_from_uniswap_V2_and_sushiswap(
       token_in,
       token_out,
     } = liquidity_pool;
-
-  
 
     const token_in_decimals =
       token_in === token0.id ? token0.decimals : token1.decimals;
@@ -121,19 +100,29 @@ async function get_amount_out_from_uniswap_V2_and_sushiswap(
       token_in_decimals
     );
 
-    const amount_out_from_trade = await poolContract.callStatic.getAmountsOut(
+    console.log('Calling getAmountsOut with params:', {
+      amountIn: amouunt_in_parsed_big_int.toString(),
+      path: [token_in, token_out]
+    });
+
+    const amount_out_from_trade = await poolContract.getAmountsOut.staticCall(
       amouunt_in_parsed_big_int,
       [token_in, token_out]
     );
+
+    console.log('amount_out_from_trade:', amount_out_from_trade.toString());
 
     const parsed_amounts_out = ethers.formatUnits(
       amount_out_from_trade[1],
       token_out_decimals
     );
 
+    console.log('parsed_amounts_out:', parsed_amounts_out);
+
     return parsed_amounts_out;
   } catch (error) {
-    console.error(error);
+    console.error('Error in get_amount_out_from_uniswap_V2_and_sushiswap:', error);
+    throw error;
   }
 }
 
@@ -144,18 +133,9 @@ async function on_chain_check(path_object) {
 
     const loan_pool = loan_pools[path[0].token_in];
  
-    const borrow_token_usd_price =
-      path[0].token_in === loan_pool.token0.id
-        ? loan_pool.token_0_usd_price
-        : loan_pool.token_1_usd_price;
-
-    /*/if (loan_pool) {
+    if (loan_pool) {
+      let input_amount = optimal_amount;
       const start_amount = optimal_amount;
-      let input_amount = optimal_amount;/*/
-
-      if (loan_pool) {
-        let minAmountToInvest = optimal_amount;
-        let maxAmountToTrade = Infinity;
 
       for (const pool of path) {
         const token_in_decimals =
@@ -166,14 +146,11 @@ async function on_chain_check(path_object) {
         input_amount = Number(input_amount).toFixed(token_in_decimals);
 
         if (pool.exchange === 'uniswapV3') {
-        
           const amounts_out = await get_amount_out_from_uniswap_V3(
             pool,
             input_amount.toString()
           );
           input_amount = amounts_out;
-       
-        
         } else {
           const amounts_out =
             await get_amount_out_from_uniswap_V2_and_sushiswap(
@@ -183,13 +160,19 @@ async function on_chain_check(path_object) {
           input_amount = amounts_out;
         }
       }
-      const profit = (input_amount - start_amount) * borrow_token_usd_price;
+
+      const borrow_token_usd_price =
+        path[0].token_in === loan_pool.token0.id
+          ? loan_pool.token_0_usd_price
+          : loan_pool.token_1_usd_price;
+
+      const profit = (Number(input_amount) - Number(start_amount)) * borrow_token_usd_price;
    
       path_object.profit_usd_onchain_check = profit;
-      path_object.ending_amount = input_amount - start_amount;
+      path_object.ending_amount = Number(input_amount) - Number(start_amount);
     }
   } catch (error) {
-    console.error(error);
+    console.error('Error in on_chain_check:', error);
   }
 }
 
