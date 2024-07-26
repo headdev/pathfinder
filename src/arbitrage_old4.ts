@@ -13,19 +13,24 @@ import { writeFileSync } from 'fs';
 
 // tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
 
-  const ALLOWED_TOKENS = [
-    '0x28424507a5bbfd333006bf08e9b1913f087f7ef4',
-    '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
-    '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619',
-    '0xfa68fb4628dff1028cfec22b4162fccd0d45efb6',
-    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
-    '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
-    '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
-    '0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39',
-    '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063',
-    '0xd6df932a45c0f255f85145f286ea0b292b21c90b',
-    
-  ];
+const ALLOWED_TOKENS = [
+  '0x28424507a5bbfd333006bf08e9b1913f087f7ef4',
+  "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+  "0x80cA0d8C38d2e2BcbaB66aA1648Bd1C7160500FE",
+  "0x2aeB3AcBEb4C604451C560d89D88d95d54C2C2cC",
+  "0xdF7837DE1F2Fa4631D716CF2502f8b230F1dcc32",
+  "0xA8C557c7ac1626EacAa0e80fAc7b6997346306E8",
+  "0xF07A8Cc2d26a87D6BBcf6e578d7f5202f3ed9642",
+  '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
+  '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619',
+  '0xfa68fb4628dff1028cfec22b4162fccd0d45efb6',
+  '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+  '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
+  '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
+  '0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39',
+  '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063',
+  '0xd6df932a45c0f255f85145f286ea0b292b21c90b',
+];
 
   interface ArbitrageRoute {
     cycle: string[];
@@ -49,7 +54,7 @@ async function fetchTokens(first, skip = 0, dex: DEX) {
   .filter(t => ALLOWED_TOKENS.includes(t.id))
   .slice(0, 9);
 
-  console.log(`Tokens:`,  top20Tokens ) //mostActiveTokens.tokens)
+  console.log(Tokens:,  top20Tokens ) //mostActiveTokens.tokens)
 
   return top20Tokens.map((t) => { return t.id });
 }
@@ -73,14 +78,14 @@ function calculatePathWeight(g, cycle) {
   // console.log(cycle.length);
   for (let index = 0; index < cycle.length - 1; index++) {
     let indexNext = index + 1;
-    // console.log(`new indices: ${index} ${indexNext}`);
+    // console.log(new indices: ${index} ${indexNext});
     let startVertex = g.getVertexByKey(cycle[index]);
     let endVertex = g.getVertexByKey(cycle[indexNext]);
     let edge = g.findEdge(startVertex, endVertex);
 
-    // console.log(`Start: ${startVertex.value} | End: ${endVertex.value}`)
-    // console.log(`Adj edge weight: ${edge.weight} | Raw edge weight: ${edge.rawWeight} | ${edge.getKey()}`);
-    // console.log(`DEX: ${edge.metadata.dex}`)
+    // console.log(Start: ${startVertex.value} | End: ${endVertex.value})
+    // console.log(Adj edge weight: ${edge.weight} | Raw edge weight: ${edge.rawWeight} | ${edge.getKey()});
+    // console.log(DEX: ${edge.metadata.dex})
     // console.log(cycleWeight * edge.rawWeight)
 
     cycleWeight *= edge.rawWeight * (1 + SLIPPAGE + LENDING_FEE);
@@ -188,7 +193,7 @@ async function fetchSushiswapPools(tokenIds) {
 
       if (forwardEdgeExists) {
         if (forwardEdgeExists.rawWeight < forwardEdge.rawWeight) {
-          if (debug) console.log(`replacing: ${poolData.token0.symbol}->${poolData.token1.symbol} from ${forwardEdgeExists.rawWeight} to ${forwardEdge.rawWeight}`)
+          if (debug) console.log(replacing: ${poolData.token0.symbol}->${poolData.token1.symbol} from ${forwardEdgeExists.rawWeight} to ${forwardEdge.rawWeight})
           g.deleteEdge(forwardEdgeExists);
           g.addEdge(forwardEdge);
         }
@@ -198,7 +203,7 @@ async function fetchSushiswapPools(tokenIds) {
 
       if (backwardEdgeExists) {
         if (backwardEdgeExists.rawWeight < backwardEdge.rawWeight) {
-          if (debug) console.log(`replacing: ${poolData.token1.symbol}->${poolData.token0.symbol} from ${backwardEdgeExists.rawWeight} to ${backwardEdge.rawWeight}`)
+          if (debug) console.log(replacing: ${poolData.token1.symbol}->${poolData.token0.symbol} from ${backwardEdgeExists.rawWeight} to ${backwardEdge.rawWeight})
           g.deleteEdge(backwardEdgeExists);
           g.addEdge(backwardEdge);
         }
@@ -244,7 +249,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
 
       if (forwardEdgeExists) {
         if (forwardEdgeExists.rawWeight < forwardEdge.rawWeight) {
-          if (debug) console.log(`replacing: ${poolData.token0.symbol}->${poolData.token1.symbol} from ${forwardEdgeExists.rawWeight} to ${forwardEdge.rawWeight}`)
+          if (debug) console.log(replacing: ${poolData.token0.symbol}->${poolData.token1.symbol} from ${forwardEdgeExists.rawWeight} to ${forwardEdge.rawWeight})
           g.deleteEdge(forwardEdgeExists);
           g.addEdge(forwardEdge);
         }
@@ -254,7 +259,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
 
       if (backwardEdgeExists) {
         if (backwardEdgeExists.rawWeight < backwardEdge.rawWeight) {
-          if (debug) console.log(`replacing: ${poolData.token1.symbol}->${poolData.token0.symbol} from ${backwardEdgeExists.rawWeight} to ${backwardEdge.rawWeight}`)
+          if (debug) console.log(replacing: ${poolData.token1.symbol}->${poolData.token0.symbol} from ${backwardEdgeExists.rawWeight} to ${backwardEdge.rawWeight})
           g.deleteEdge(backwardEdgeExists);
           g.addEdge(backwardEdge);
         }
@@ -345,9 +350,9 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
   }
 
   let arbitrageData = await calcArbitrage(g);
-  console.log(`Cycles:`, arbitrageData);
+  console.log(Cycles:, arbitrageData);
   
-  console.log(`There were ${arbitrageData.length} arbitrage cycles detected.`);
+  console.log(There were ${arbitrageData.length} arbitrage cycles detected.);
 
   storeArbitrageRoutes(arbitrageData);
 
@@ -357,7 +362,7 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
 function printGraphEdges(g) {
   let edges = g.getAllEdges();
   for (let edge of edges) {
-    console.log(`${edge.startVertex} -> ${edge.endVertex} | ${edge.rawWeight} | DEX: ${edge.metadata.dex}`);
+    console.log(${edge.startVertex} -> ${edge.endVertex} | ${edge.rawWeight} | DEX: ${edge.metadata.dex});
   }
 }
 
@@ -366,6 +371,3 @@ function printGraphEdges(g) {
 export {
   main
 }
-
-
-// operar

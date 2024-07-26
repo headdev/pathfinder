@@ -4,10 +4,13 @@ import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE, MINPROFIT, QUOTER_CONTRACT_ADDRESS
 // https://github.com/trekhleb/javascript-algorithms/blob/master/src/data-structures/graph/GraphEdge.js
 
 export interface EdgeMetadata {
-  dex: DEX;  // Cambia string a DEX
+  dex: DEX;
   address: string;
   fee: number;
+  liquidity?: string;
+  feeTier?: number;
 }
+
 export default class GraphEdge {
   startVertex: GraphVertex;
   endVertex: GraphVertex;

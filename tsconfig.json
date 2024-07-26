@@ -2,7 +2,11 @@
     "compilerOptions": {
       "outDir": "./built",
       "allowJs": true,
-      "target": "ES2016"
+      "target": "es2020",
+      "module": "commonjs",
+      "moduleResolution": "node",
+      "esModuleInterop": true,
+      "resolveJsonModule": true
     },
     "include": ["./src/**/*"]
 }

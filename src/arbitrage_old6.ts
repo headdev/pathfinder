@@ -1,27 +1,31 @@
-// nuevo con optimizador
-import { request } from 'graphql-request'
-import * as UNISWAP from './dex_queries/uniswap';
-import * as SUSHISWAP from './dex_queries/sushiswap';
-const { check_all_structured_paths } = require('.//profitability_checks/intial_check');
+import { ethers } from 'ethers';
+import JSBI from 'jsbi';
 import Graph from './graph_library/Graph';
 import GraphVertex from './graph_library/GraphVertex';
-import GraphEdge from './graph_library/GraphEdge';
+import GraphEdge, { EdgeMetadata } from './graph_library/GraphEdge';
 import bellmanFord from './bellman-ford';
-import { DEX, MIN_TVL, SLIPPAGE, LENDING_FEE, MINPROFIT, QUOTER_CONTRACT_ADDRESS } from './constants';
+import { 
+  DEX, 
+  MIN_TVL, 
+  SLIPPAGE, 
+  LENDING_FEE, 
+  MINPROFIT, 
+  FEE_TEIR_PERCENTAGE_OBJECT, 
+  QUOTER_CONTRACT_ADDRESS,
+  UNISWAP_V2_SUSHSISWAP_ABI
+} from './constants';
 import * as fs from 'fs';
 import * as path from 'path';
-import { get_amount_out_from_uniswap_V3, get_amount_out_from_uniswap_V2_and_sushiswap } from './profitability_checks/on_chain_check';
-import { ethers } from 'ethers';
+import dotenv from 'dotenv';
 
-const INITIAL_MATIC = ethers.parseUnits('100', 18);
-const AAVE_INTEREST_RATE = 0.0005; // 0.05%
+dotenv.config();
+
+const INITIAL_MATIC = ethers.parseUnits('100', 'gwei');
+const FLASH_LOAN_FEE = 0.0005; // 0.05%
 const WMATIC_ADDRESS = '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
 
-// hacer un swap entre WMATIC, y el token de origen, con 100 MATIC, usando las funciones de uniswapv3 o suhiswap, segun lo diga la ruta 
 
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
-// tokens iniciales para el nodo G, Validos para un flashloan en AAVE : 
 const ALLOWED_TOKENS = [
   '0x28424507a5bbfd333006bf08e9b1913f087f7ef4',
   "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
@@ -41,82 +45,205 @@ const ALLOWED_TOKENS = [
   '0xd6df932a45c0f255f85145f286ea0b292b21c90b',
 ];
 
+const UNISWAP_V3_FACTORY_ADDRESS = '0x1F98431c8aD98523631AE4a59f267346ea31F984';
+const UNISWAP_V3_FACTORY_ABI = [
+  'function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool)'
+];
+
+const UNISWAP_V3_POOL_ABI = [
+  "function token0() external view returns (address)",
+  "function token1() external view returns (address)",
+  "function fee() external view returns (uint24)",
+  "function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
+  "function liquidity() external view returns (uint128)"
+];
+
+const SUSHISWAP_FACTORY_ADDRESS = '0xc35DADB65012eC5796536bD9864eD8773aBc74C4';
+const SUSHISWAP_FACTORY_ABI = [
+  'function getPair(address tokenA, address tokenB) external view returns (address pair)'
+];
+
+const SUSHISWAP_PAIR_ABI = [
+  'function token0() external view returns (address)',
+  'function token1() external view returns (address)',
+  'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)'
+];
+
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+
+const uniswapV3Factory = new ethers.Contract(UNISWAP_V3_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ABI, provider);
+const sushiswapFactory = new ethers.Contract(SUSHISWAP_FACTORY_ADDRESS, SUSHISWAP_FACTORY_ABI, provider);
 
 interface ArbitrageRoute {
   cycle: string[];
   cycleWeight: number;
   detail: string;
   type: string;
-  dex: string;
-  initialAmount?: string;
-  maxLoanAmount?: string;
-  totalAmount?: string;
+  calculo1?: string;
+  montomaxflashloan?: string;
   estimatedProfit?: string;
+  isRentable?: boolean;
 }
 
-interface ImprovedArbitrageRoute extends ArbitrageRoute {
-  steps: {
-    from: string;
-    to: string;
-    type: string;
-    exchange: string;
-    poolAddress: string;
-    feeTier: number;
-  }[];
-}
+async function fetchUniswapV3Pools(tokenIds: string[]): Promise<Set<string>> {
+  const pools = new Set<string>();
+  const fees = [500, 3000, 10000]; // Fee tiers de Uniswap V3
 
-async function fetchTokens(first: number, dexes: DEX[]): Promise<string[]> {
-  let allTokens = new Map<string, { id: string, volume: number }>();
-
-  for (const dex of dexes) {
-    let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
-    let tokensQuery = (dex === DEX.UniswapV3) ? UNISWAP.HIGHEST_VOLUME_TOKENS(first) : SUSHISWAP.HIGHEST_VOLUME_TOKENS(first, 0);
-    
-    try {
-      let mostActiveTokens = await request(dexEndpoint, tokensQuery);
-
-      if (!mostActiveTokens || !mostActiveTokens.tokens) {
-        console.error(`No se encontraron tokens en la respuesta para ${dex}:`, mostActiveTokens);
-        continue;
+  for (let i = 0; i < tokenIds.length; i++) {
+    for (let j = i + 1; j < tokenIds.length; j++) {
+      for (const fee of fees) {
+        const pool = await uniswapV3Factory.getPool(tokenIds[i], tokenIds[j], fee);
+        if (pool !== ethers.ZeroAddress) {
+          pools.add(pool);
+        }
       }
-
-      mostActiveTokens.tokens
-        .filter(t => ALLOWED_TOKENS.includes(t.id))
-        .forEach(t => {
-          if (allTokens.has(t.id)) {
-            allTokens.get(t.id).volume += Number(t.volumeUSD);
-          } else {
-            allTokens.set(t.id, { id: t.id, volume: Number(t.volumeUSD) });
-          }
-        });
-    } catch (error) {
-      console.error(`Error fetching tokens for ${dex}:`, error);
     }
   }
 
-  let sortedTokens = Array.from(allTokens.values())
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, first)
-    .map(t => t.id);
-
-  console.log(`Tokens combinados:`, sortedTokens);
-
-  return sortedTokens;
+  console.log(`Uniswap V3 pools found: ${pools.size}`);
+  return pools;
 }
 
-function classifyEdge(g, startKey, endKey) {
-  let startVertex = g.getVertexByKey(startKey);
-  let endVertex = g.getVertexByKey(endKey);
-  let edge = g.findEdge(startVertex, endVertex);
+async function fetchSushiswapPools(tokenIds: string[]): Promise<Set<string>> {
+  const pools = new Set<string>();
 
-  if (edge.rawWeight > 1 + SLIPPAGE + LENDING_FEE) {
-    return 'buy';
-  } else {
-    return 'sell';
+  for (let i = 0; i < tokenIds.length; i++) {
+    for (let j = i + 1; j < tokenIds.length; j++) {
+      const pair = await sushiswapFactory.getPair(tokenIds[i], tokenIds[j]);
+      if (pair !== ethers.ZeroAddress) {
+        pools.add(pair);
+      }
+    }
+  }
+
+  console.log(`Sushiswap pools found: ${pools.size}`);
+  return pools;
+}
+
+async function getUniswapV3PoolData(poolAddress: string): Promise<{ price: number, liquidity: string, token0: string, token1: string, feeTier: number }> {
+  const poolContract = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
+
+  try {
+    const token0 = await poolContract.token0();
+    const token1 = await poolContract.token1();
+    const [sqrtPriceX96, , , , , ] = await poolContract.slot0();
+    const liquidity = await poolContract.liquidity();
+    const feeTier = await poolContract.fee();
+
+    const price = Math.pow(Number(sqrtPriceX96) / Math.pow(2, 96), 2);
+
+    if (price === 0) {
+      console.warn(`Price is zero for pool ${poolAddress}`);
+      return { price: 0, liquidity: '0', token0, token1, feeTier };
+    }
+
+    return { price, liquidity: liquidity.toString(), token0, token1, feeTier };
+  } catch (error) {
+    console.error(`Error al obtener datos de la pool de Uniswap V3 ${poolAddress}:`, error);
+    return { price: 0, liquidity: '0', token0: '', token1: '', feeTier: 0 };
   }
 }
 
-function calculatePathWeight(g, cycle) {
+async function getSushiswapPoolData(poolAddress: string): Promise<{ price: number, liquidity: string, token0: string, token1: string }> {
+  const poolContract = new ethers.Contract(poolAddress, SUSHISWAP_PAIR_ABI, provider);
+
+  try {
+    const token0 = await poolContract.token0();
+    const token1 = await poolContract.token1();
+    const [reserve0, reserve1] = await poolContract.getReserves();
+
+    const price = Number(reserve1) / Number(reserve0);
+    const liquidity = ethers.formatUnits(reserve0.add(reserve1), 'ether');
+
+    if (price === 0) {
+      console.warn(`Price is zero for pool ${poolAddress}`);
+      return { price: 0, liquidity: '0', token0, token1 };
+    }
+
+    return { price, liquidity, token0, token1 };
+  } catch (error) {
+    console.error(`Error al obtener datos de la pool de Sushiswap ${poolAddress}:`, error);
+    return { price: 0, liquidity: '0', token0: '', token1: '' };
+  }
+}
+
+
+
+async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false): Promise<void> {
+  if (debug) console.log(pools);
+  for (var pool of Array.from(pools.values())) {
+    try {
+      if (debug) console.log(dex, pool);
+      
+      if (dex === DEX.UniswapV3) {
+        const { price, liquidity, token0, token1, feeTier } = await getUniswapV3PoolData(pool);
+        if (price === 0) continue;
+
+        if (!g.getVertexByKey(token0)) {
+          g.addVertex(new GraphVertex(token0));
+        }
+        if (!g.getVertexByKey(token1)) {
+          g.addVertex(new GraphVertex(token1));
+        }
+
+        let vertex0 = g.getVertexByKey(token0);
+        let vertex1 = g.getVertexByKey(token1);
+
+        let metadata = { 
+          dex: dex, 
+          address: pool, 
+          liquidity, 
+          fee: Number(feeTier) / 1000000,
+          feeTier: Number(feeTier)
+        };
+
+        updateOrAddEdge(g, vertex0, vertex1, -Math.log(price), price * (1 + SLIPPAGE + LENDING_FEE), metadata);
+        updateOrAddEdge(g, vertex1, vertex0, -Math.log(1/price), (1/price) * (1 + SLIPPAGE + LENDING_FEE), metadata);
+      } else {
+        const { price, liquidity, token0, token1 } = await getSushiswapPoolData(pool);
+        if (price === 0) continue;
+
+        if (!g.getVertexByKey(token0)) {
+          g.addVertex(new GraphVertex(token0));
+        }
+        if (!g.getVertexByKey(token1)) {
+          g.addVertex(new GraphVertex(token1));
+        }
+
+        let vertex0 = g.getVertexByKey(token0);
+        let vertex1 = g.getVertexByKey(token1);
+
+        let metadata = { dex: dex, address: pool, liquidity, fee: 0.003 };
+
+        updateOrAddEdge(g, vertex0, vertex1, -Math.log(price), price * (1 + SLIPPAGE + LENDING_FEE), metadata);
+        updateOrAddEdge(g, vertex1, vertex0, -Math.log(1/price), (1/price) * (1 + SLIPPAGE + LENDING_FEE), metadata);
+      }
+    } catch (error) {
+      console.error(`Error fetching pool ${pool} for ${dex}:`, error);
+    }
+  }
+  console.log(`Finished processing ${pools.size} pools for ${dex}`);
+}
+
+function updateOrAddEdge(g: Graph, startVertex: GraphVertex, endVertex: GraphVertex, weight: number, rawWeight: number, metadata: EdgeMetadata): void {
+  if (!startVertex || !endVertex) {
+    console.warn(`Cannot add edge: one or both vertices do not exist`);
+    return;
+  }
+
+  const existingEdge = g.findEdge(startVertex, endVertex);
+  if (existingEdge) {
+    if (weight < existingEdge.weight) {
+      existingEdge.weight = weight;
+      existingEdge.rawWeight = rawWeight;
+      existingEdge.metadata = metadata;
+    }
+  } else {
+    g.addEdge(new GraphEdge(startVertex, endVertex, weight, rawWeight, metadata));
+  }
+}
+
+function calculatePathWeight(g: Graph, cycle: string[]): { cycleWeight: number, detailedCycle: any[] } {
   let cycleWeight = 1.0;
   let detailedCycle = [];
 
@@ -128,238 +255,21 @@ function calculatePathWeight(g, cycle) {
 
     cycleWeight *= edge.rawWeight * (1 + SLIPPAGE + LENDING_FEE);
 
-    let transactionType = classifyEdge(g, cycle[index], cycle[index + 1]);
-
+    let transactionType = edge.rawWeight > 1 + SLIPPAGE + LENDING_FEE ? 'buy' : 'sell';
     let dexName = edge.metadata.dex === DEX.UniswapV3 ? "Uniswap V3" : "Sushiswap";
 
     detailedCycle.push({
       start: cycle[index],
-      end: cycle[index + 1],
+      end: cycle[indexNext],
       type: transactionType,
       rawWeight: edge.rawWeight,
       dexnombre: dexName,
       dex: edge.metadata.dex, 
       poolAddress: edge.metadata.address,
-      feeTier: edge.metadata.fee
+      feeTier: edge.metadata.feeTier || 0
     });
   }
   return { cycleWeight, detailedCycle };
-}
-
-async function fetchUniswapPools(tokenIds) {
-  try {
-    let pools = new Set<string>();
-    let tokenIdsSet = new Set(tokenIds);
-
-    for (let id of tokenIds) {
-      let whitelistPoolsRaw = await request(UNISWAP.ENDPOINT, UNISWAP.token_whitelist_pools(id));
-      let whitelistPools = whitelistPoolsRaw.token.whitelistPools;
-
-      for (let pool of whitelistPools) {
-        let otherToken = (pool.token0.id === id) ? pool.token1.id : pool.token0.id;
-        if (tokenIdsSet.has(otherToken)) {
-          pools.add(pool.id)
-        }
-      }
-    }
-    console.log(`Uniswap pools found: ${pools.size}`);
-    return pools;
-  } catch (error) {
-    console.error("Error fetching Uniswap pools:", error);
-    return new Set<string>();
-  }
-}
-
-async function fetchSushiswapPools(tokenIds) {
-  try {
-    let pools = new Set<string>();
-    let poolsDataRaw = await request(SUSHISWAP.ENDPOINT, SUSHISWAP.PAIRS(tokenIds));
-    let poolsData = poolsDataRaw.pairs;
-
-    for (let pool of poolsData) {
-      pools.add(pool.id);
-    }
-    console.log(`Sushiswap pools found: ${pools.size}`);
-    return pools;
-  } catch (error) {
-    console.error("Error fetching Sushiswap pools:", error);
-    return new Set<string>();
-  }
-}
-
-async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false) {
-  if (debug) console.log(pools);
-  for (var pool of Array.from(pools.values())) {
-    try {
-      if (debug) console.log(dex, pool);
-      let DEX_ENDPOINT = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
-      let DEX_QUERY = (dex === DEX.UniswapV3) ? UNISWAP.fetch_pool(pool) : SUSHISWAP.PAIR(pool);
-
-      let poolRequest = await request(DEX_ENDPOINT, DEX_QUERY);
-      if (debug) console.log("poolRequest", poolRequest);
-      
-      let poolData = (dex === DEX.UniswapV3) ? poolRequest.pool : poolRequest.pair;
-      if (debug) console.log(poolData);
-
-      let reserves = (dex === DEX.UniswapV3) ? Number(poolData.totalValueLockedUSD) : Number(poolData.reserveUSD);
-      if (poolData.token1Price != 0 && poolData.token0Price != 0 && reserves > MIN_TVL) {
-        let vertex0 = g.getVertexByKey(poolData.token0.id);
-        let vertex1 = g.getVertexByKey(poolData.token1.id);
-
-        let token1Price = Number(poolData.token1Price);
-        let token0Price = Number(poolData.token0Price);
-        let fee = Number(poolData.feeTier);
-        
-        let forwardEdge = new GraphEdge(vertex0, vertex1, -Math.log(Number(token1Price)), token1Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
-        let backwardEdge = new GraphEdge(vertex1, vertex0, -Math.log(Number(token0Price)), token0Price * (1 + SLIPPAGE + LENDING_FEE), { dex: dex, address: pool, fee: fee });
-
-        // Check if edges already exist
-        let existingForwardEdge = g.findEdge(vertex0, vertex1);
-        let existingBackwardEdge = g.findEdge(vertex1, vertex0);
-
-        if (existingForwardEdge) {
-          // Update existing edge if new edge is better
-          if (forwardEdge.weight < existingForwardEdge.weight) {
-            g.deleteEdge(existingForwardEdge);
-            g.addEdge(forwardEdge);
-          }
-        } else {
-          g.addEdge(forwardEdge);
-        }
-
-        if (existingBackwardEdge) {
-          // Update existing edge if new edge is better
-          if (backwardEdge.weight < existingBackwardEdge.weight) {
-            g.deleteEdge(existingBackwardEdge);
-            g.addEdge(backwardEdge);
-          }
-        } else {
-          g.addEdge(backwardEdge);
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching pool ${pool} for ${dex}:`, error);
-    }
-  }
-  console.log(`Finished processing ${pools.size} pools for ${dex}`);
-}
-
-function classifyCycle(g, cycle) {
-  let directions = [];
-
-  for (let index = 0; index < cycle.length - 1; index++) {
-    let startVertex = g.getVertexByKey(cycle[index]);
-    let endVertex = g.getVertexByKey(cycle[index + 1]);
-    let edge = g.findEdge(startVertex, endVertex);
-
-    if (edge.rawWeight > 1 + SLIPPAGE + LENDING_FEE) {
-      directions.push('buy');
-    } else {
-      directions.push('sell');
-    }
-  }
-
-  let buyCount = directions.filter(direction => direction === 'buy').length;
-  let sellCount = directions.filter(direction => direction === 'sell').length;
-
-  return (buyCount > sellCount) ? 'buy' : 'sell';
-}
-
-async function calculateInitialAmount(originTokenAddress: string): Promise<bigint> {
-  try {
-    console.log(`Calculating initial amount for ${originTokenAddress}`);
-    const exchange = originTokenAddress === WMATIC_ADDRESS ? 'Uniswap V3' : 'Sushiswap';
-    let result;
-    
-    if (exchange === 'Uniswap V3') {
-      result = await get_amount_out_from_uniswap_V3({
-        token0: { id: WMATIC_ADDRESS },
-        token1: { id: originTokenAddress },
-        token_in: WMATIC_ADDRESS,
-        token_out: originTokenAddress,
-        fee: 3000
-      }, ethers.formatUnits(INITIAL_MATIC, 18));
-    } else {
-      result = await get_amount_out_from_uniswap_V2_and_sushiswap({
-        token0: { id: WMATIC_ADDRESS },
-        token1: { id: originTokenAddress },
-        token_in: WMATIC_ADDRESS,
-        token_out: originTokenAddress,
-        exchange: exchange.toLowerCase()
-      }, ethers.formatUnits(INITIAL_MATIC, 18));
-    }
-
-    if (result === '0') {
-      console.error(`get_amount_out returned zero for ${originTokenAddress}`);
-      return BigInt(0);
-    }
-
-    console.log(`Initial amount result: ${result}`);
-    return ethers.parseUnits(result, 18);
-  } catch (error) {
-    console.error('Error in calculateInitialAmount:', error);
-    return BigInt(0);
-  }
-}
-
-
-function calculateMaxLoanAmount(initialAmount: bigint): bigint {
-  if (initialAmount <= BigInt(0)) {
-    console.error('Invalid initialAmount in calculateMaxLoanAmount:', initialAmount.toString());
-    return BigInt(0);
-  }
-  const interestRateBigInt = BigInt(Math.floor(AAVE_INTEREST_RATE * 1000000));
-  return initialAmount * BigInt(1000000) / interestRateBigInt;
-}
-
-async function calculateRouteProfit(route: ArbitrageRoute, amount: bigint): Promise<bigint> {
-  if (amount <= BigInt(0)) {
-    console.error('Invalid amount in calculateRouteProfit:', amount.toString());
-    return BigInt(0);
-  }
-
-  let currentAmount = amount;
-  const steps = JSON.parse(route.detail);
-
-  console.log(`Starting route profit calculation with amount: ${ethers.formatUnits(currentAmount, 18)}`);
-
-  for (const step of steps) {
-    try {
-      let result;
-      if (step.dexnombre === "Uniswap V3") {
-        result = await get_amount_out_from_uniswap_V3({
-          token0: { id: step.start },
-          token1: { id: step.end },
-          token_in: step.start,
-          token_out: step.end,
-          fee: step.feeTier
-        }, currentAmount.toString());
-      } else {
-        result = await get_amount_out_from_uniswap_V2_and_sushiswap({
-          token0: { id: step.start },
-          token1: { id: step.end },
-          token_in: step.start,
-          token_out: step.end,
-          exchange: step.dexnombre.toLowerCase()
-        }, currentAmount.toString());
-      }
-
-      if (result === undefined) {
-        console.error('get_amount_out returned undefined for step:', step);
-        return BigInt(0);
-      }
-
-      currentAmount = ethers.parseUnits(result, 18);
-      console.log(`After step ${step.start} -> ${step.end}: ${ethers.formatUnits(currentAmount, 18)}`);
-    } catch (error) {
-      console.error('Error in calculateRouteProfit step:', error);
-      return BigInt(0);
-    }
-  }
-
-  const profit = currentAmount - amount;
-  console.log(`Route profit: ${ethers.formatUnits(profit, 18)}`);
-  return profit;
 }
 
 async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
@@ -372,55 +282,18 @@ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
     let result = bellmanFord(g, vertex);
     let cyclePaths = result.cyclePaths;
     console.log(`Found ${cyclePaths.length} cycle paths for vertex ${vertex.getKey()}`);
-    
     for (var cycle of cyclePaths) {
       let cycleString = cycle.join('');
-      if (uniqueCycle[cycleString]) continue;
-      
-      uniqueCycle[cycleString] = true;
-      let cycleWeight = calculatePathWeight(g, cycle);
-      
-      if (cycleWeight.cycleWeight >= 1 + MINPROFIT) {
-        let cycleType = classifyCycle(g, cycle);
-        let route: ArbitrageRoute = {
+      let { cycleWeight, detailedCycle } = calculatePathWeight(g, cycle);
+      if (!uniqueCycle[cycleString] && cycleWeight >= 1 + MINPROFIT) {
+        uniqueCycle[cycleString] = true;
+        let cycleType = cycleWeight > 1 ? 'buy' : 'sell';
+        arbitrageData.push({
           cycle: cycle,
-          cycleWeight: cycleWeight.cycleWeight,
-          detail: JSON.stringify(cycleWeight.detailedCycle),
-          type: cycleType,
-          dex: cycleWeight.detailedCycle[0].dexnombre // Asumimos que el primer paso define el DEX para toda la ruta
-        };
-        
-        // Calcular el monto inicial
-        const initialAmount = await calculateInitialAmount(cycle[0]);
-        console.log(`Initial amount for ${cycle[0]}: ${ethers.formatUnits(initialAmount, 18)}`);
-        
-        if (initialAmount > BigInt(0)) {
-          // Calcular el monto máximo a prestar
-          const maxLoanAmount = calculateMaxLoanAmount(initialAmount);
-          console.log(`Max loan amount: ${ethers.formatUnits(maxLoanAmount, 18)}`);
-          
-          // Calcular el monto total
-          const totalAmount = initialAmount + maxLoanAmount;
-          console.log(`Total amount: ${ethers.formatUnits(totalAmount, 18)}`);
-          
-          // Calcular el profit con el monto total
-          const profit = await calculateRouteProfit(route, totalAmount);
-          console.log(`Estimated profit: ${ethers.formatUnits(profit, 18)}`);
-          
-          if (profit > BigInt(0)) {
-            arbitrageData.push({
-              ...route,
-              initialAmount: ethers.formatUnits(initialAmount, 18),
-              maxLoanAmount: ethers.formatUnits(maxLoanAmount, 18),
-              totalAmount: ethers.formatUnits(totalAmount, 18),
-              estimatedProfit: ethers.formatUnits(profit, 18),
-            });
-          } else {
-            console.log('Route is not profitable');
-          }
-        } else {
-          console.log(`Could not calculate initial amount for ${cycle[0]}`);
-        }
+          cycleWeight: cycleWeight,
+          detail: JSON.stringify(detailedCycle),
+          type: cycleType
+        });
       }
     }
   }
@@ -428,108 +301,155 @@ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
   return arbitrageData;
 }
 
+async function calculateInitialAmounts(startToken: string): Promise<{ calculo1: string, montomaxflashloan: string }> {
+  try {
+    const pool = await findPoolForTokenPair(WMATIC_ADDRESS, startToken);
+    if (!pool) {
+      console.warn(`No se encontró una pool para WMATIC-${startToken}`);
+      return { calculo1: '0', montomaxflashloan: '0' };
+    }
 
-function improveRouteFormat(route: ArbitrageRoute): ImprovedArbitrageRoute {
+    const { price } = await getUniswapV3PoolData(pool);
+    if (price === 0) {
+      console.warn("Price is zero, cannot calculate initial amounts");
+      return { calculo1: '0', montomaxflashloan: '0' };
+    }
+
+    const calculo1 = JSBI.divide(
+      JSBI.multiply(
+        JSBI.BigInt(INITIAL_MATIC.toString()),
+        JSBI.BigInt(Math.floor(price * 1e18))
+      ),
+      JSBI.BigInt(1e18)
+    );
+    const montomaxflashloan = JSBI.divide(
+      JSBI.multiply(calculo1, JSBI.BigInt(1e18)),
+      JSBI.BigInt(Math.floor(FLASH_LOAN_FEE * 1e18))
+    );
+
+    return { 
+      calculo1: ethers.formatUnits(calculo1.toString(), 'gwei'),
+      montomaxflashloan: ethers.formatUnits(montomaxflashloan.toString(), 'gwei')
+    };
+  } catch (error) {
+    console.error('Error in calculateInitialAmounts:', error);
+    return { calculo1: '0', montomaxflashloan: '0' };
+  }
+}
+
+async function findPoolForTokenPair(token0: string, token1: string): Promise<string | null> {
+  const fees = [500, 3000, 10000];
+  for (const fee of fees) {
+    const pool = await uniswapV3Factory.getPool(token0, token1, fee);
+    if (pool !== ethers.ZeroAddress) {
+      return pool;
+    }
+  }
+  return null;
+}
+
+async function calculateRouteProfit(route: ArbitrageRoute, amount: string): Promise<string> {
+  let currentAmount = JSBI.BigInt(ethers.parseUnits(amount, 'gwei').toString());
   const steps = JSON.parse(route.detail);
-  return {
-    ...route,
-    steps: steps.map(step => ({
-      from: step.start,
-      to: step.end,
-      type: step.type,
-      exchange: step.dexnombre,
-      poolAddress: step.poolAddress,
-      feeTier: step.feeTier
-    }))
-  };
-}
 
-function storeArbitrageRoutes(routes: ImprovedArbitrageRoute[]) {
-  const filePath = path.join(__dirname, 'arbitrageRoutes.json');
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(routes, null, 2));
-    console.log(`Arbitrage routes successfully saved to ${filePath}`);
-  } catch (error) {
-    console.error(`Error saving arbitrage routes to file:`, error);
+  for (const step of steps) {
+    try {
+      if (step.dex === DEX.UniswapV3) {
+        const { price } = await getUniswapV3PoolData(step.poolAddress);
+        if (step.type === "buy") {
+          currentAmount = JSBI.divide(
+            JSBI.multiply(currentAmount, JSBI.BigInt(1e18)),
+            JSBI.BigInt(Math.floor(price * 1e18))
+          );
+        } else {
+          currentAmount = JSBI.divide(
+            JSBI.multiply(currentAmount, JSBI.BigInt(Math.floor(price * 1e18))),
+            JSBI.BigInt(1e18)
+          );
+        }
+      } else if (step.dex === DEX.Sushiswap) {
+        const { price } = await getSushiswapPoolData(step.poolAddress);
+        if (step.type === "buy") {
+          currentAmount = JSBI.divide(
+            JSBI.multiply(currentAmount, JSBI.BigInt(1e18)),
+            JSBI.BigInt(Math.floor(price * 1e18))
+          );
+        } else {
+          currentAmount = JSBI.divide(
+            JSBI.multiply(currentAmount, JSBI.BigInt(Math.floor(price * 1e18))),
+            JSBI.BigInt(1e18)
+          );
+        }
+      }
+    } catch (error) {
+      console.error(`Error en el paso ${step.dex}:`, error);
+      return '0';
+    }
   }
+
+  const initialAmount = JSBI.BigInt(ethers.parseUnits(amount, 'gwei').toString());
+  const profit = JSBI.subtract(currentAmount, initialAmount);
+  return ethers.formatUnits(profit.toString(), 'gwei');
 }
 
-async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
+async function processArbitrageRoutes(routes: ArbitrageRoute[]): Promise<ArbitrageRoute[]> {
+  const processedRoutes: ArbitrageRoute[] = [];
+
+  for (const route of routes) {
+    try {
+      const { calculo1, montomaxflashloan } = await calculateInitialAmounts(route.cycle[0]);
+      const estimatedProfit = await calculateRouteProfit(route, montomaxflashloan);
+      const isRentable = parseFloat(estimatedProfit) > 0;
+
+      processedRoutes.push({
+        ...route,
+        calculo1,
+        montomaxflashloan,
+        estimatedProfit,
+        isRentable
+      });
+    } catch (error) {
+      console.error(`Error procesando ruta:`, error);
+    }
+  }
+
+  return processedRoutes;
+}
+
+export async function main(numberTokens: number, dexs: Set<DEX>, debug: boolean = false){
   try {
-    console.log(`Starting main function with ${numberTokens} tokens and DEXs: ${Array.from(DEXs).join(', ')}`);
-    
+    console.log("Iniciando el proceso de arbitraje...");
+
+    const tokenIds = ALLOWED_TOKENS;
+    console.log(`Se usarán ${tokenIds.length} tokens.`);
+
     let g: Graph = new Graph(true);
-    
-    console.log("Fetching tokens...");
-    let tokenIds = await fetchTokens(numberTokens, Array.from(DEXs));
-    console.log(`Tokens obtained: ${tokenIds.join(', ')}`);
-    
-    console.log("Creating vertices...");
-    tokenIds.forEach(id => {
-      g.addVertex(new GraphVertex(id));
-    });
-    console.log(`${g.getAllVertices().length} vertices created.`);
-    
-    console.log("Fetching pools...");
-    if (DEXs.has(DEX.UniswapV3)) {
-      console.log("Fetching Uniswap V3 pools...");
-      let uniPools: Set<string> = await fetchUniswapPools(tokenIds);
-      console.log(`Fetched ${uniPools.size} Uniswap V3 pools. Getting prices...`);
-      await fetchPoolPrices(g, uniPools, DEX.UniswapV3, debug);
-    }
-    
-    if (DEXs.has(DEX.Sushiswap)) {
-      console.log("Fetching Sushiswap pools...");
-      let sushiPools: Set<string> = await fetchSushiswapPools(tokenIds);
-      console.log(`Fetched ${sushiPools.size} Sushiswap pools. Getting prices...`);
-      await fetchPoolPrices(g, sushiPools, DEX.Sushiswap, debug);
-    }
-    
-    console.log("All prices obtained. Calculating arbitrage...");
-    let arbitrageData = await calcArbitrage(g);
-    console.log(`Found ${arbitrageData.length} potential arbitrage opportunities.`);
-    
-    if (debug) {
-      console.log("Arbitrage data:", JSON.stringify(arbitrageData, null, 2));
-    }
-    
-    console.log("Improving route format...");
-    let improvedArbitrageData = arbitrageData.map(improveRouteFormat);
-    
-    console.log("Storing arbitrage routes...");
-    storeArbitrageRoutes(improvedArbitrageData);
-    
+    tokenIds.forEach(id => g.addVertex(new GraphVertex(id)));
+    console.log("Grafo inicializado.");
+
+    console.log("Obteniendo pools y precios...");
+    const uniPools = await fetchUniswapV3Pools(tokenIds);
+    await fetchPoolPrices(g, uniPools, DEX.UniswapV3, true);
+    const sushiPools = await fetchSushiswapPools(tokenIds);
+    await fetchPoolPrices(g, sushiPools, DEX.Sushiswap, true);
+
+    console.log("Calculando rutas de arbitraje...");
+    const arbitrageRoutes = await calcArbitrage(g);
+    console.log(`Se encontraron ${arbitrageRoutes.length} rutas de arbitraje potenciales.`);
+
+    console.log("Procesando y analizando rutas...");
+    const processedRoutes = await processArbitrageRoutes(arbitrageRoutes);
+
     const filePath = path.join(__dirname, 'arbitrageRoutes.json');
-    if (fs.existsSync(filePath)) {
-      console.log(`arbitrageRoutes.json file was successfully created at ${filePath}`);
-    } else {
-      console.error(`Failed to create arbitrageRoutes.json file at ${filePath}`);
-    }
-    
-    if (debug) {
-      console.log("Printing graph edges...");
-      printGraphEdges(g);
-    }
-    
-    console.log("Main function completed successfully");
+    fs.writeFileSync(filePath, JSON.stringify(processedRoutes, null, 2));
+    console.log(`Resultados guardados en ${filePath}`);
+
+    console.log(`Proceso completado. Se procesaron ${processedRoutes.length} rutas de arbitraje.`);
   } catch (error) {
-    console.error("An error occurred in the main function:", error);
-    throw error;  // Re-throw the error to be caught by the outer catch block
+    console.error("Error en la ejecución principal:", error);
   }
 }
 
-function printGraphEdges(g: Graph) {
-  let edges = g.getAllEdges();
-  console.log(`Total edges: ${edges.length}`);
-  for (let edge of edges) {
-    console.log(`${edge.startVertex.getKey()} -> ${edge.endVertex.getKey()} | Weight: ${edge.weight} | Raw Weight: ${edge.rawWeight} | DEX: ${edge.metadata?.dex || 'Unknown'}`);
-  }
-}
 
-main(5, new Set([DEX.UniswapV3, DEX.Sushiswap]), true)
-  .then(() => console.log("Script completed successfully"))
-  .catch(error => console.error("An error occurred during execution:", error));
 
-export {
-  main
-};
+//export { main };

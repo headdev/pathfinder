@@ -1,1 +1,59 @@
-[]
+[
+  {
+    "cycle": [
+      "0xD6DF932A45C0f255f85145f286eA0b292B21C90B",
+      "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39",
+      "0xD6DF932A45C0f255f85145f286eA0b292B21C90B"
+    ],
+    "cycleWeight": 3.1940293858422335e+39,
+    "detail": "[{\"start\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"end\":\"0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39\",\"type\":\"buy\",\"rawWeight\":7.994194896385283,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xfaE91e08188332ED6Ea09b314BBE3FC6cD1432C1\",\"feeTier\":10000},{\"start\":\"0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39\",\"end\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"type\":\"buy\",\"rawWeight\":3.589709101123894e+38,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0x284e88102b1b05125052B01a0A68e0E0517b3a9D\",\"feeTier\":3000}]",
+    "type": "buy",
+    "calculo1": "0.507929434",
+    "montomaxflashloan": "1015.858868",
+    "estimatedProfit": "-1015.858868",
+    "isRentable": false
+  },
+  {
+    "cycle": [
+      "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39",
+      "0xD6DF932A45C0f255f85145f286eA0b292B21C90B",
+      "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"
+    ],
+    "cycleWeight": 3.1940293858422335e+39,
+    "detail": "[{\"start\":\"0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39\",\"end\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"type\":\"buy\",\"rawWeight\":3.589709101123894e+38,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0x284e88102b1b05125052B01a0A68e0E0517b3a9D\",\"feeTier\":3000},{\"start\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"end\":\"0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39\",\"type\":\"buy\",\"rawWeight\":7.994194896385283,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xfaE91e08188332ED6Ea09b314BBE3FC6cD1432C1\",\"feeTier\":10000}]",
+    "type": "buy",
+    "calculo1": "3.816399604",
+    "montomaxflashloan": "7632.799208",
+    "estimatedProfit": "-7632.799208",
+    "isRentable": false
+  },
+  {
+    "cycle": [
+      "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39",
+      "0xD6DF932A45C0f255f85145f286eA0b292B21C90B",
+      "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+      "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39"
+    ],
+    "cycleWeight": 4.313391359851802e+39,
+    "detail": "[{\"start\":\"0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39\",\"end\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"type\":\"buy\",\"rawWeight\":3.589709101123894e+38,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0x284e88102b1b05125052B01a0A68e0E0517b3a9D\",\"feeTier\":3000},{\"start\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"end\":\"0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063\",\"type\":\"buy\",\"rawWeight\":106.88132052538153,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xd20f057B05F1D62c1fe306f6EE77ab4c8fD7e2FB\",\"feeTier\":3000},{\"start\":\"0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063\",\"end\":\"0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39\",\"type\":\"sell\",\"rawWeight\":0.09574154205355385,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xabfBA24FbfA7AF2985036bf9d0A2fd7209Cf76f6\",\"feeTier\":10000}]",
+    "type": "buy",
+    "calculo1": "3.816399604",
+    "montomaxflashloan": "7632.799208",
+    "estimatedProfit": "-7632.799208",
+    "isRentable": false
+  },
+  {
+    "cycle": [
+      "0xD6DF932A45C0f255f85145f286eA0b292B21C90B",
+      "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+      "0xD6DF932A45C0f255f85145f286eA0b292B21C90B"
+    ],
+    "cycleWeight": 1.9987650046693475,
+    "detail": "[{\"start\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"end\":\"0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063\",\"type\":\"buy\",\"rawWeight\":106.88132052538153,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xd20f057B05F1D62c1fe306f6EE77ab4c8fD7e2FB\",\"feeTier\":3000},{\"start\":\"0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063\",\"end\":\"0xD6DF932A45C0f255f85145f286eA0b292B21C90B\",\"type\":\"sell\",\"rawWeight\":0.016801768897149724,\"dexnombre\":\"Uniswap V3\",\"dex\":0,\"poolAddress\":\"0xe5c7e972542Ce10d77683c84D1ceE2028E0C782E\",\"feeTier\":10000}]",
+    "type": "buy",
+    "calculo1": "0.507929434",
+    "montomaxflashloan": "1015.858868",
+    "estimatedProfit": "623.164987407",
+    "isRentable": true
+  }
+]
