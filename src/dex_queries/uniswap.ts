@@ -54,7 +54,7 @@ export function fetch_pool(id) {
         token1Price
         totalValueLockedUSD
 
-        feeTier
+        feeTier 
         feesUSD
       }
     }

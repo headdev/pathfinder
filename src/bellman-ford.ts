@@ -1,91 +1,91 @@
 import Graph from "./graph_library/Graph";
 import GraphVertex from "./graph_library/GraphVertex";
+import GraphEdge from "./graph_library/GraphEdge";
 
 /**
  * @param {Graph} graph
  * @param {GraphVertex} startVertex
- * @return {{distances, previousVertices}}
- * 
- * https://github.com/trekhleb/javascript-algorithms/blob/master/src/algorithms/graph/bellman-ford/bellmanFord.js
+ * @param {number} maxDepth
+ * @return {{distances, previousVertices, cyclePaths}}
  */
-export default function bellmanFord(graph: Graph, startVertex: GraphVertex) {
-    const distances = {};
-    const previousVertices = {};
-  
-    // Init all distances with infinity assuming that currently we can't reach
-    // any of the vertices except start one.
-    distances[startVertex.getKey()] = 0;
+export default function bellmanFord(graph: Graph, startVertex: GraphVertex, maxDepth: number = 4) {
+    const distances: { [key: string]: number } = {};
+    const previousVertices: { [key: string]: GraphVertex | null } = {};
+    const paths: { [key: string]: string[] } = {};
+
+    // Inicialización
     graph.getAllVertices().forEach((vertex) => {
-      previousVertices[vertex.getKey()] = null;
-      if (vertex.getKey() !== startVertex.getKey()) {
-        distances[vertex.getKey()] = Infinity;
-      }
+        const vertexKey = vertex.getKey();
+        distances[vertexKey] = vertexKey === startVertex.getKey() ? 0 : Infinity;
+        previousVertices[vertexKey] = null;
+        paths[vertexKey] = [vertexKey];
     });
-  
-    // (|V| - 1) iterations
-    for (let iter = 0; iter < (graph.getAllVertices().length - 1); iter += 1) {
-      let edges = graph.getAllEdges();
-      for (let edge of edges) {
+
+    // Relajación de aristas
+    for (let i = 0; i < Math.min(graph.getAllVertices().length - 1, maxDepth); i++) {
+        let edges = graph.getAllEdges();
+        for (let edge of edges) {
+            let from = edge.startVertex;
+            let to = edge.endVertex;
+            const fromKey = from.getKey();
+            const toKey = to.getKey();
+            if (distances[fromKey] + edge.weight < distances[toKey]) {
+                distances[toKey] = distances[fromKey] + edge.weight;
+                previousVertices[toKey] = from;
+                paths[toKey] = [...paths[fromKey], toKey];
+            }
+        }
+    }
+
+    // Detección de ciclos negativos (oportunidades de arbitraje)
+    let cyclePaths: string[][] = [];
+    let foundCycles: { [key: string]: boolean } = {};
+    let edges = graph.getAllEdges();
+    for (let edge of edges) {
         let from = edge.startVertex;
         let to = edge.endVertex;
-        if (distances[from.value] + edge.weight < distances[to.value]) {
-          distances[to.value] = distances[from.value] + edge.weight;
-          previousVertices[to.value] = from;
+        const fromKey = from.getKey();
+        const toKey = to.getKey();
+        if (distances[fromKey] + edge.weight < distances[toKey]) {
+            let cycle = detectCycle(to, previousVertices);
+            if (cycle) {
+                let uniquePath = cycle.join('');
+                if (!foundCycles[uniquePath] && cycle.length <= maxDepth) {
+                    cyclePaths.push(cycle);
+                    foundCycles[uniquePath] = true;
+                }
+            }
         }
-      }
     }
 
-    // Detect negative cycle
-    // for (let iter = 0; iter < (graph.getAllVertices().length - 1); iter += 1) {
-    let edges = graph.getAllEdges();
-    let cyclePaths = [];
-    let foundCycles = {};
-    for (let edge of edges) {
-      let cyclePath = [];
-      let from = edge.startVertex;
-      let to = edge.endVertex;
-      if (distances[from.value] + edge.weight < distances[to.value]) {
-        // Logging
-        // console.log(`NEGATIVE EDGE WEIGHT CYCLE DETECTED`)
-        // console.log(`from: ${from.value}`)
-        // console.log(`to: ${to.value}`)
-          
-        // Arbitrage value
-        let curr = from;
-        let index = 1;
-        cyclePath[to.value] = index++;
-
-        while (!cyclePath[curr.value]) {
-          cyclePath[curr.value] = index++;
-          curr = previousVertices[curr.getKey()];
-        }
-        cyclePath[curr.value+'_'] = index;
-        // console.log(`found arb cycle`, cyclePath);
-
-        // Remove non-cycle edges
-        let path = [];
-        for (let key of Object.keys(cyclePath)) { path.push(key.replace('_','')); }
-        path.reverse();
-        for (var i = 0; i < path.length; i++) {
-          if (i !== 0 && path[0] === path[i]) {
-            path = path.slice(0, i+1);
-            break;
-          }
-        }
-        // console.log(`stripped cycle`, path);
-
-        // Ensure uniqueness of cycles
-        let uniquePath = path.join('');
-        if (!foundCycles[uniquePath]) {
-          cyclePaths.push(path);
-          foundCycles[uniquePath] = true;
-        }
-      }
-    }
-  
     return {
-      distances,
-      previousVertices,
-      cyclePaths
+        distances,
+        previousVertices,
+        cyclePaths
     };
-  }
+}
+
+/**
+ * Detecta y retorna un ciclo si existe
+ * @param {GraphVertex} vertex
+ * @param {Object} previousVertices
+ * @return {string[] | null}
+ */
+function detectCycle(vertex: GraphVertex, previousVertices: { [key: string]: GraphVertex | null }): string[] | null {
+    let visited = new Set<string>();
+    let cycle: string[] = [];
+    let current: GraphVertex | null = vertex;
+
+    while (current && !visited.has(current.getKey())) {
+        visited.add(current.getKey());
+        cycle.push(current.getKey());
+        current = previousVertices[current.getKey()];
+    }
+
+    if (current && cycle.includes(current.getKey())) {
+        let startIndex = cycle.indexOf(current.getKey());
+        return cycle.slice(startIndex);
+    }
+
+    return null;
+}

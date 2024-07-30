@@ -1,16 +1,16 @@
 import { ethers } from 'ethers';
-import JSBI from 'jsbi';
+import BigNumber from 'bignumber.js';
 import Graph from './graph_library/Graph';
 import GraphVertex from './graph_library/GraphVertex';
 import GraphEdge, { EdgeMetadata } from './graph_library/GraphEdge';
 import bellmanFord from './bellman-ford';
-import { 
-  DEX, 
-  MIN_TVL, 
-  SLIPPAGE, 
-  LENDING_FEE, 
-  MINPROFIT, 
-  FEE_TEIR_PERCENTAGE_OBJECT, 
+import {
+  DEX,
+  MIN_TVL,
+  SLIPPAGE,
+  LENDING_FEE,
+  MINPROFIT,
+  FEE_TEIR_PERCENTAGE_OBJECT,
   QUOTER_CONTRACT_ADDRESS,
   UNISWAP_V2_SUSHSISWAP_ABI
 } from './constants';
@@ -21,28 +21,22 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const INITIAL_MATIC = ethers.parseUnits('100', 'gwei');
-const FLASH_LOAN_FEE = 0.0005; // 0.05%
+const FLASH_LOAN_FEE = new BigNumber(0.0005); // 0.05% as 5 basis points
 const WMATIC_ADDRESS = '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
-
-
+const MIN_PROFITABLE_AMOUNT = new BigNumber(0.0001);
 
 const ALLOWED_TOKENS = [
-  '0x28424507a5bbfd333006bf08e9b1913f087f7ef4',
-  "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
-  "0x80cA0d8C38d2e2BcbaB66aA1648Bd1C7160500FE",
-  "0x2aeB3AcBEb4C604451C560d89D88d95d54C2C2cC",
-  "0xdF7837DE1F2Fa4631D716CF2502f8b230F1dcc32",
-  "0xA8C557c7ac1626EacAa0e80fAc7b6997346306E8",
-  "0xF07A8Cc2d26a87D6BBcf6e578d7f5202f3ed9642",
-  '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6',
-  '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619',
-  '0xfa68fb4628dff1028cfec22b4162fccd0d45efb6',
-  '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
-  '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
-  '0x2791bca1f2de4661ed88a30c99a7a9449aa84174',
-  '0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39',
-  '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063',
-  '0xd6df932a45c0f255f85145f286ea0b292b21c90b',
+  "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6",
+  "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+  "0xfa68fb4628dff1028cfec22b4162fccd0d45efb6",
+  "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+  "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+  "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
+  "0x03b54a6e9a984069379fae1a4fc4dbae93b3bccd",
+  "0x3a58a54c066fdc0f2d55fc9c89f0415c92ebf3c4",
+  "0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39",
+  "0xe111178a87a3bff0c8d18decba5798827539ae99",
+  "0x0A15232784220D0999b1b2B54CCbCA54079BFcd7",
 ];
 
 const UNISWAP_V3_FACTORY_ADDRESS = '0x1F98431c8aD98523631AE4a59f267346ea31F984';
@@ -69,14 +63,14 @@ const SUSHISWAP_PAIR_ABI = [
   'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)'
 ];
 
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+const provider = new ethers.JsonRpcProvider("https://bold-black-road.matic.quiknode.pro/256dc2c56afd0b5bc32d7c424c3b8c67eb93ad40");
 
 const uniswapV3Factory = new ethers.Contract(UNISWAP_V3_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ABI, provider);
 const sushiswapFactory = new ethers.Contract(SUSHISWAP_FACTORY_ADDRESS, SUSHISWAP_FACTORY_ABI, provider);
 
 interface ArbitrageRoute {
   cycle: string[];
-  cycleWeight: number;
+  cycleWeight: string;
   detail: string;
   type: string;
   calculo1?: string;
@@ -87,7 +81,7 @@ interface ArbitrageRoute {
 
 async function fetchUniswapV3Pools(tokenIds: string[]): Promise<Set<string>> {
   const pools = new Set<string>();
-  const fees = [500, 3000, 10000]; // Fee tiers de Uniswap V3
+  const fees = [500, 3000, 10000];
 
   for (let i = 0; i < tokenIds.length; i++) {
     for (let j = i + 1; j < tokenIds.length; j++) {
@@ -120,7 +114,7 @@ async function fetchSushiswapPools(tokenIds: string[]): Promise<Set<string>> {
   return pools;
 }
 
-async function getUniswapV3PoolData(poolAddress: string): Promise<{ price: number, liquidity: string, token0: string, token1: string, feeTier: number }> {
+async function getUniswapV3PoolData(poolAddress: string): Promise<{ price: BigNumber, liquidity: BigNumber, token0: string, token1: string, feeTier: BigNumber }> {
   const poolContract = new ethers.Contract(poolAddress, UNISWAP_V3_POOL_ABI, provider);
 
   try {
@@ -130,21 +124,27 @@ async function getUniswapV3PoolData(poolAddress: string): Promise<{ price: numbe
     const liquidity = await poolContract.liquidity();
     const feeTier = await poolContract.fee();
 
-    const price = Math.pow(Number(sqrtPriceX96) / Math.pow(2, 96), 2);
+    const price = new BigNumber(sqrtPriceX96.toString()).dividedBy(2 ** 96).pow(2);
 
-    if (price === 0) {
+    if (price.isZero()) {
       console.warn(`Price is zero for pool ${poolAddress}`);
-      return { price: 0, liquidity: '0', token0, token1, feeTier };
+      return { price: new BigNumber(0), liquidity: new BigNumber(0), token0, token1, feeTier: new BigNumber(0) };
     }
 
-    return { price, liquidity: liquidity.toString(), token0, token1, feeTier };
+    return {
+      price,
+      liquidity: new BigNumber(liquidity.toString()),
+      token0,
+      token1,
+      feeTier: new BigNumber(feeTier.toString())
+    };
   } catch (error) {
     console.error(`Error al obtener datos de la pool de Uniswap V3 ${poolAddress}:`, error);
-    return { price: 0, liquidity: '0', token0: '', token1: '', feeTier: 0 };
+    return { price: new BigNumber(0), liquidity: new BigNumber(0), token0: '', token1: '', feeTier: new BigNumber(0) };
   }
 }
 
-async function getSushiswapPoolData(poolAddress: string): Promise<{ price: number, liquidity: string, token0: string, token1: string }> {
+async function getSushiswapPoolData(poolAddress: string): Promise<{ price: BigNumber, liquidity: BigNumber, token0: string, token1: string }> {
   const poolContract = new ethers.Contract(poolAddress, SUSHISWAP_PAIR_ABI, provider);
 
   try {
@@ -152,72 +152,71 @@ async function getSushiswapPoolData(poolAddress: string): Promise<{ price: numbe
     const token1 = await poolContract.token1();
     const [reserve0, reserve1] = await poolContract.getReserves();
 
-    const price = Number(reserve1) / Number(reserve0);
-    const liquidity = ethers.formatUnits(reserve0.add(reserve1), 'ether');
+    const price = new BigNumber(reserve1.toString()).dividedBy(reserve0.toString());
+    const liquidity = new BigNumber(reserve0.toString()).plus(reserve1.toString());
 
-    if (price === 0) {
+    if (price.isZero()) {
       console.warn(`Price is zero for pool ${poolAddress}`);
-      return { price: 0, liquidity: '0', token0, token1 };
+      return { price: new BigNumber(0), liquidity: new BigNumber(0), token0, token1 };
     }
 
     return { price, liquidity, token0, token1 };
   } catch (error) {
     console.error(`Error al obtener datos de la pool de Sushiswap ${poolAddress}:`, error);
-    return { price: 0, liquidity: '0', token0: '', token1: '' };
+    return { price: new BigNumber(0), liquidity: new BigNumber(0), token0: '', token1: '' };
   }
 }
 
-
-
 async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: boolean = false): Promise<void> {
+  const MIN_PRICE = new BigNumber('1e-18'); // Un precio mínimo muy pequeño
+
   if (debug) console.log(pools);
   for (var pool of Array.from(pools.values())) {
     try {
       if (debug) console.log(dex, pool);
-      
-      if (dex === DEX.UniswapV3) {
-        const { price, liquidity, token0, token1, feeTier } = await getUniswapV3PoolData(pool);
-        if (price === 0) continue;
 
-        if (!g.getVertexByKey(token0)) {
-          g.addVertex(new GraphVertex(token0));
-        }
-        if (!g.getVertexByKey(token1)) {
-          g.addVertex(new GraphVertex(token1));
-        }
-
-        let vertex0 = g.getVertexByKey(token0);
-        let vertex1 = g.getVertexByKey(token1);
-
-        let metadata = { 
-          dex: dex, 
-          address: pool, 
-          liquidity, 
-          fee: Number(feeTier) / 1000000,
-          feeTier: Number(feeTier)
-        };
-
-        updateOrAddEdge(g, vertex0, vertex1, -Math.log(price), price * (1 + SLIPPAGE + LENDING_FEE), metadata);
-        updateOrAddEdge(g, vertex1, vertex0, -Math.log(1/price), (1/price) * (1 + SLIPPAGE + LENDING_FEE), metadata);
-      } else {
-        const { price, liquidity, token0, token1 } = await getSushiswapPoolData(pool);
-        if (price === 0) continue;
-
-        if (!g.getVertexByKey(token0)) {
-          g.addVertex(new GraphVertex(token0));
-        }
-        if (!g.getVertexByKey(token1)) {
-          g.addVertex(new GraphVertex(token1));
-        }
-
-        let vertex0 = g.getVertexByKey(token0);
-        let vertex1 = g.getVertexByKey(token1);
-
-        let metadata = { dex: dex, address: pool, liquidity, fee: 0.003 };
-
-        updateOrAddEdge(g, vertex0, vertex1, -Math.log(price), price * (1 + SLIPPAGE + LENDING_FEE), metadata);
-        updateOrAddEdge(g, vertex1, vertex0, -Math.log(1/price), (1/price) * (1 + SLIPPAGE + LENDING_FEE), metadata);
+      let poolData;
+      try {
+        poolData = dex === DEX.UniswapV3 ? await getUniswapV3PoolData(pool) : await getSushiswapPoolData(pool);
+      } catch (error) {
+        console.error(`Error fetching pool ${pool} for ${dex}:`, error);
+        continue;
       }
+
+      const { price, liquidity, token0, token1, feeTier } = poolData;
+
+      // Asegurarse de que price es un BigNumber
+      const bnPrice = BigNumber.isBigNumber(price) ? price : new BigNumber(price.toString());
+
+      if (bnPrice.isLessThan(MIN_PRICE)) {
+        console.warn(`Price is below threshold for pool ${pool}`);
+        continue;
+      }
+
+      if (!g.getVertexByKey(token0)) {
+        g.addVertex(new GraphVertex(token0));
+      }
+      if (!g.getVertexByKey(token1)) {
+        g.addVertex(new GraphVertex(token1));
+      }
+
+      let vertex0 = g.getVertexByKey(token0);
+      let vertex1 = g.getVertexByKey(token1);
+
+      let metadata: EdgeMetadata = dex === DEX.UniswapV3
+        ? {
+            dex: dex,
+            address: pool,
+            liquidity: liquidity.toString(),
+            fee: BigNumber.isBigNumber(feeTier) ? feeTier.dividedBy(1000000).toNumber() : Number(feeTier) / 1000000,
+            feeTier: BigNumber.isBigNumber(feeTier) ? feeTier.toNumber() : Number(feeTier)
+          }
+        : { dex: dex, address: pool, liquidity: liquidity.toString(), fee: 0.003 };
+
+      // Usar Math.log() para calcular el logaritmo natural
+      const logPrice = Math.log(bnPrice.toNumber());
+      updateOrAddEdge(g, vertex0, vertex1, -logPrice, bnPrice, metadata);
+      updateOrAddEdge(g, vertex1, vertex0, logPrice, new BigNumber(1).dividedBy(bnPrice), metadata);
     } catch (error) {
       console.error(`Error fetching pool ${pool} for ${dex}:`, error);
     }
@@ -225,7 +224,7 @@ async function fetchPoolPrices(g: Graph, pools: Set<string>, dex: DEX, debug: bo
   console.log(`Finished processing ${pools.size} pools for ${dex}`);
 }
 
-function updateOrAddEdge(g: Graph, startVertex: GraphVertex, endVertex: GraphVertex, weight: number, rawWeight: number, metadata: EdgeMetadata): void {
+function updateOrAddEdge(g: Graph, startVertex: GraphVertex, endVertex: GraphVertex, weight: number, rawWeight: BigNumber, metadata: EdgeMetadata): void {
   if (!startVertex || !endVertex) {
     console.warn(`Cannot add edge: one or both vertices do not exist`);
     return;
@@ -235,16 +234,16 @@ function updateOrAddEdge(g: Graph, startVertex: GraphVertex, endVertex: GraphVer
   if (existingEdge) {
     if (weight < existingEdge.weight) {
       existingEdge.weight = weight;
-      existingEdge.rawWeight = rawWeight;
+      existingEdge.rawWeight = rawWeight.toNumber();
       existingEdge.metadata = metadata;
     }
   } else {
-    g.addEdge(new GraphEdge(startVertex, endVertex, weight, rawWeight, metadata));
+    g.addEdge(new GraphEdge(startVertex, endVertex, weight, rawWeight.toNumber(), metadata));
   }
 }
 
-function calculatePathWeight(g: Graph, cycle: string[]): { cycleWeight: number, detailedCycle: any[] } {
-  let cycleWeight = 1.0;
+function calculatePathWeight(g: Graph, cycle: string[]): { cycleWeight: BigNumber, detailedCycle: any[] } {
+  let cycleWeight = new BigNumber(1);
   let detailedCycle = [];
 
   for (let index = 0; index < cycle.length - 1; index++) {
@@ -253,18 +252,22 @@ function calculatePathWeight(g: Graph, cycle: string[]): { cycleWeight: number, 
     let endVertex = g.getVertexByKey(cycle[indexNext]);
     let edge = g.findEdge(startVertex, endVertex);
 
-    cycleWeight *= edge.rawWeight * (1 + SLIPPAGE + LENDING_FEE);
+    const fee = new BigNumber(edge.metadata.fee);
+    const rawWeight = new BigNumber(edge.rawWeight);
+    
+    // Incluir la tarifa en el cálculo del peso del ciclo
+    cycleWeight = cycleWeight.times(rawWeight).times(new BigNumber(1).minus(fee));
 
-    let transactionType = edge.rawWeight > 1 + SLIPPAGE + LENDING_FEE ? 'buy' : 'sell';
+    let transactionType = rawWeight.isGreaterThan(1) ? 'buy' : 'sell';
     let dexName = edge.metadata.dex === DEX.UniswapV3 ? "Uniswap V3" : "Sushiswap";
 
     detailedCycle.push({
       start: cycle[index],
       end: cycle[indexNext],
       type: transactionType,
-      rawWeight: edge.rawWeight,
+      rawWeight: rawWeight.toString(),
       dexnombre: dexName,
-      dex: edge.metadata.dex, 
+      dex: edge.metadata.dex,
       poolAddress: edge.metadata.address,
       feeTier: edge.metadata.feeTier || 0
     });
@@ -285,12 +288,12 @@ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
     for (var cycle of cyclePaths) {
       let cycleString = cycle.join('');
       let { cycleWeight, detailedCycle } = calculatePathWeight(g, cycle);
-      if (!uniqueCycle[cycleString] && cycleWeight >= 1 + MINPROFIT) {
+      if (!uniqueCycle[cycleString] && cycleWeight.isGreaterThan(new BigNumber(1).plus(MINPROFIT))) {
         uniqueCycle[cycleString] = true;
-        let cycleType = cycleWeight > 1 ? 'buy' : 'sell';
+        let cycleType = cycleWeight.isGreaterThan(1) ? 'buy' : 'sell';
         arbitrageData.push({
           cycle: cycle,
-          cycleWeight: cycleWeight,
+          cycleWeight: cycleWeight.toString(),
           detail: JSON.stringify(detailedCycle),
           type: cycleType
         });
@@ -300,7 +303,6 @@ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
   console.log(`Arbitrage calculation complete. Found ${arbitrageData.length} opportunities.`);
   return arbitrageData;
 }
-
 async function calculateInitialAmounts(startToken: string): Promise<{ calculo1: string, montomaxflashloan: string }> {
   try {
     const pool = await findPoolForTokenPair(WMATIC_ADDRESS, startToken);
@@ -310,32 +312,28 @@ async function calculateInitialAmounts(startToken: string): Promise<{ calculo1: 
     }
 
     const { price } = await getUniswapV3PoolData(pool);
-    if (price === 0) {
+    if (price.isZero()) {
       console.warn("Price is zero, cannot calculate initial amounts");
       return { calculo1: '0', montomaxflashloan: '0' };
     }
 
-    const calculo1 = JSBI.divide(
-      JSBI.multiply(
-        JSBI.BigInt(INITIAL_MATIC.toString()),
-        JSBI.BigInt(Math.floor(price * 1e18))
-      ),
-      JSBI.BigInt(1e18)
-    );
-    const montomaxflashloan = JSBI.divide(
-      JSBI.multiply(calculo1, JSBI.BigInt(1e18)),
-      JSBI.BigInt(Math.floor(FLASH_LOAN_FEE * 1e18))
-    );
+    // Convertir 100 MATIC al token de inicio
+    const calculo1 = new BigNumber(INITIAL_MATIC.toString()).times(price).div(1e18);
+    
+    // Calcular el monto máximo a prestar considerando el FLASH_LOAN_FEE
+    const montomaxflashloan = calculo1.div(new BigNumber(1).minus(FLASH_LOAN_FEE));
 
-    return { 
-      calculo1: ethers.formatUnits(calculo1.toString(), 'gwei'),
-      montomaxflashloan: ethers.formatUnits(montomaxflashloan.toString(), 'gwei')
+    return {
+      calculo1: calculo1.toString(),
+      montomaxflashloan: montomaxflashloan.toString()
     };
   } catch (error) {
     console.error('Error in calculateInitialAmounts:', error);
     return { calculo1: '0', montomaxflashloan: '0' };
   }
 }
+
+
 
 async function findPoolForTokenPair(token0: string, token1: string): Promise<string | null> {
   const fees = [500, 3000, 10000];
@@ -347,39 +345,19 @@ async function findPoolForTokenPair(token0: string, token1: string): Promise<str
   }
   return null;
 }
-
 async function calculateRouteProfit(route: ArbitrageRoute, amount: string): Promise<string> {
-  let currentAmount = JSBI.BigInt(ethers.parseUnits(amount, 'gwei').toString());
+  let currentAmount = new BigNumber(amount);
   const steps = JSON.parse(route.detail);
 
   for (const step of steps) {
     try {
-      if (step.dex === DEX.UniswapV3) {
-        const { price } = await getUniswapV3PoolData(step.poolAddress);
-        if (step.type === "buy") {
-          currentAmount = JSBI.divide(
-            JSBI.multiply(currentAmount, JSBI.BigInt(1e18)),
-            JSBI.BigInt(Math.floor(price * 1e18))
-          );
-        } else {
-          currentAmount = JSBI.divide(
-            JSBI.multiply(currentAmount, JSBI.BigInt(Math.floor(price * 1e18))),
-            JSBI.BigInt(1e18)
-          );
-        }
-      } else if (step.dex === DEX.Sushiswap) {
-        const { price } = await getSushiswapPoolData(step.poolAddress);
-        if (step.type === "buy") {
-          currentAmount = JSBI.divide(
-            JSBI.multiply(currentAmount, JSBI.BigInt(1e18)),
-            JSBI.BigInt(Math.floor(price * 1e18))
-          );
-        } else {
-          currentAmount = JSBI.divide(
-            JSBI.multiply(currentAmount, JSBI.BigInt(Math.floor(price * 1e18))),
-            JSBI.BigInt(1e18)
-          );
-        }
+      let price = new BigNumber(step.rawWeight);
+      let fee = new BigNumber(step.feeTier).dividedBy(1000000);
+
+      if (step.type === "buy") {
+        currentAmount = currentAmount.times(new BigNumber(1).minus(fee)).dividedBy(price);
+      } else {
+        currentAmount = currentAmount.times(price).times(new BigNumber(1).minus(fee));
       }
     } catch (error) {
       console.error(`Error en el paso ${step.dex}:`, error);
@@ -387,10 +365,19 @@ async function calculateRouteProfit(route: ArbitrageRoute, amount: string): Prom
     }
   }
 
-  const initialAmount = JSBI.BigInt(ethers.parseUnits(amount, 'gwei').toString());
-  const profit = JSBI.subtract(currentAmount, initialAmount);
-  return ethers.formatUnits(profit.toString(), 'gwei');
+  const initialAmount = new BigNumber(amount);
+  const profit = currentAmount.minus(initialAmount);
+  
+  // Solo considerar el FLASH_LOAN_FEE, ya que es el mismo que LENDING_FEE
+  const totalFee = initialAmount.times(FLASH_LOAN_FEE);
+  const netProfit = profit.minus(totalFee);
+
+  
+
+  return netProfit.toString();
 }
+
+
 
 async function processArbitrageRoutes(routes: ArbitrageRoute[]): Promise<ArbitrageRoute[]> {
   const processedRoutes: ArbitrageRoute[] = [];
@@ -398,8 +385,11 @@ async function processArbitrageRoutes(routes: ArbitrageRoute[]): Promise<Arbitra
   for (const route of routes) {
     try {
       const { calculo1, montomaxflashloan } = await calculateInitialAmounts(route.cycle[0]);
+      if (calculo1 === '0' || montomaxflashloan === '0') {
+        continue;
+      }
       const estimatedProfit = await calculateRouteProfit(route, montomaxflashloan);
-      const isRentable = parseFloat(estimatedProfit) > 0;
+      const isRentable = new BigNumber(estimatedProfit).isGreaterThan(MIN_PROFITABLE_AMOUNT);
 
       processedRoutes.push({
         ...route,
@@ -416,7 +406,7 @@ async function processArbitrageRoutes(routes: ArbitrageRoute[]): Promise<Arbitra
   return processedRoutes;
 }
 
-export async function main(numberTokens: number, dexs: Set<DEX>, debug: boolean = false){
+async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
   try {
     console.log("Iniciando el proceso de arbitraje...");
 
@@ -450,6 +440,9 @@ export async function main(numberTokens: number, dexs: Set<DEX>, debug: boolean 
   }
 }
 
-
-
-//export { main };
+// Si quieres ejecutar el script directamente
+if (require.main === module) {
+  main(5, new Set([DEX.UniswapV3, DEX.Sushiswap]), true)
+    .then(() => console.log("Script completed successfully"))
+    .catch(error => console.error("An error occurred during execution:", error));
+}
