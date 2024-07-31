@@ -20,6 +20,15 @@ dotenv.config();
 
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
+const ORIGIN_TOKENS = [
+  '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WMATIC
+  '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6', // WBTC
+  '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC.e
+  '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC.e
+  "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", //USDT
+  // Agrega aquí más tokens que quieras usar como origen
+];
+
 const UNISWAP_V3_FACTORY_ADDRESS = '0x1F98431c8aD98523631AE4a59f267346ea31F984';
 const UNISWAP_V3_FACTORY_ABI = [
   'function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool)'
@@ -334,12 +343,59 @@ function createLineGraph(originalGraph: Graph): Graph {
 }
 
 
-async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
+/*/ async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
   console.log("Starting arbitrage calculation...");
   let arbitrageData: ArbitrageRoute[] = [];
   let uniqueCycle: {[key: string]: boolean} = {};
 
   for (const startVertex of g.getAllVertices()) {
+    console.log(`Calculating for vertex: ${startVertex.getKey()}`);
+    let cycles = findCycles(g, startVertex, 3, 6);
+    
+    for (const cycle of cycles) {
+      let cycleString = cycle.join('');
+      if (!uniqueCycle[cycleString]) {
+        uniqueCycle[cycleString] = true;
+        let { weight: cycleWeight, dexPath } = calculateCycleWeight(g, cycle);
+        
+        // Verificar si la ruta incluye tanto Uniswap V3 como Sushiswap
+        const hasUniswap = dexPath.includes(DEX.UniswapV3);
+        const hasSushiswap = dexPath.includes(DEX.Sushiswap);
+        
+        if (cycleWeight > 1.001 && cycleWeight < 1.5 && hasUniswap && hasSushiswap) {
+          const detail = cycle.map((token, index) => {
+            if (index === cycle.length - 1) return token;
+            return `${token} (${DEX[dexPath[index]]})`;
+          }).join(' -> ');
+
+          arbitrageData.push({
+            cycle: cycle,
+            cycleWeight: cycleWeight,
+            detail: detail,
+            type: 'cyclic',
+            dexPath: dexPath
+          });
+        }
+      }
+    }
+  }
+
+  console.log(`Arbitrage calculation complete. Found ${arbitrageData.length} opportunities.`);
+  return arbitrageData;
+} /*/
+
+async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
+  console.log("Starting arbitrage calculation...");
+  let arbitrageData: ArbitrageRoute[] = [];
+  let uniqueCycle: {[key: string]: boolean} = {};
+
+  for (const originToken of ORIGIN_TOKENS) {
+    const startVertex = g.getVertexByKey(originToken);
+    if (!startVertex) {
+      console.log(`Origin token ${originToken} not found in graph. Skipping...`);
+      continue;
+    }
+
     console.log(`Calculating for vertex: ${startVertex.getKey()}`);
     let cycles = findCycles(g, startVertex, 3, 6);
     
@@ -430,7 +486,8 @@ async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = f
     let uniTokens = DEXs.has(DEX.UniswapV3) ? await fetchTokens(numberTokens, 0, DEX.UniswapV3) : [];
     let sushiTokens = DEXs.has(DEX.Sushiswap) ? await fetchTokens(numberTokens, 0, DEX.Sushiswap) : [];
     
-    let tokenIds = [...new Set([...uniTokens, ...sushiTokens])];
+    // let tokenIds = [...new Set([...uniTokens, ...sushiTokens])]; // no incluye los origin tokens 
+    let tokenIds = [...new Set([...uniTokens, ...sushiTokens, ...ORIGIN_TOKENS])];
 
     console.log(`Total tokens: ${tokenIds.length}`);
 
