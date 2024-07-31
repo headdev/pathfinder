@@ -297,61 +297,57 @@
     }
 
 
-    function detectNonCyclicArbitrage(graph: Graph, sourceToken: string, targetToken: string): ArbitrageRoute | null {
-      const lineGraph = createLineGraph(graph);
-      
-      const sourceVertices = lineGraph.getAllVertices().filter(v => v.getKey().startsWith(sourceToken + '-'));
-      
-      if (sourceVertices.length === 0) {
-        return null;
-      }
+    function detectNonCyclicArbitrage(graph: Graph, sourceToken: string, targetToken: string, minLength: number): ArbitrageRoute | null {
+      console.log(`Detecting non-cyclic arbitrage from ${sourceToken} to ${targetToken}`);
       
       let bestArbitrage: ArbitrageRoute | null = null;
-      
-      for (const sourceVertex of sourceVertices) {
-        const { distances, paths } = modifiedMooreBellmanFord(lineGraph, sourceVertex);
-        
-        const targetVertices = lineGraph.getAllVertices().filter(v => v.getKey().endsWith('-' + targetToken));
-        
-        for (const targetVertex of targetVertices) {
-          if (distances[targetVertex.getKey()] < 0) {
-            const arbitragePath = paths[targetVertex.getKey()].map(vertex => vertex.split('-')[0]);
-            const steps: SwapStep[] = arbitragePath.map((token, index) => {
-              if (index === arbitragePath.length - 1) {
-                return { 
-                  fromToken: token, 
-                  toToken: sourceToken, 
-                  dex: DEX.UniswapV3,
-                  router: ROUTER_ADDRESS_OBJECT.uniswapV3
-                };
-              }
-              const nextToken = arbitragePath[index + 1];
-              const edge = graph.findEdge(graph.getVertexByKey(token), graph.getVertexByKey(nextToken));
-              return {
-                fromToken: token,
-                toToken: nextToken,
-                dex: edge ? edge.metadata.dex : DEX.UniswapV3,
-                router: edge 
-                  ? (edge.metadata.dex === DEX.UniswapV3 
-                      ? ROUTER_ADDRESS_OBJECT.uniswapV3 
-                      : ROUTER_ADDRESS_OBJECT.sushiswap)
-                  : ROUTER_ADDRESS_OBJECT.uniswapV3
-              };
-            });
-            const arbitrage: ArbitrageRoute = {
-              cycle: [sourceToken, ...arbitragePath, sourceToken],
-              cycleWeight: Math.exp(-distances[targetVertex.getKey()]),
-              steps: steps,
+      let bestWeight = 0;
+    
+      function dfs(currentToken: string, path: string[], weight: number, steps: SwapStep[]) {
+        if (path.length > minLength + 1) return; // +1 porque incluimos el token inicial
+    
+        if (currentToken === targetToken && path.length >= minLength) {
+          const cycleWeight = Math.exp(weight);
+          if (cycleWeight > 1.015 && cycleWeight < 1.5 && cycleWeight > bestWeight) {
+            bestWeight = cycleWeight;
+            bestArbitrage = {
+              cycle: [...path, sourceToken], // Añadimos el token inicial al final para cerrar el ciclo
+              cycleWeight: cycleWeight,
+              steps: [...steps, {
+                fromToken: currentToken,
+                toToken: sourceToken,
+                dex: DEX.UniswapV3, // Asumimos UniswapV3 para el último paso
+                router: ROUTER_ADDRESS_OBJECT.uniswapV3
+              }],
               type: 'non-cyclic'
             };
-            
-            if (!bestArbitrage || arbitrage.cycleWeight > bestArbitrage.cycleWeight) {
-              bestArbitrage = arbitrage;
-            }
+          }
+          return;
+        }
+    
+        const edges = graph.getAllEdges().filter(edge => edge.startVertex.getKey() === currentToken);
+        for (const edge of edges) {
+          const nextToken = edge.endVertex.getKey();
+          if (!path.includes(nextToken)) {
+            const newStep: SwapStep = {
+              fromToken: currentToken,
+              toToken: nextToken,
+              dex: edge.metadata.dex,
+              router: edge.metadata.dex === DEX.UniswapV3 ? ROUTER_ADDRESS_OBJECT.uniswapV3 : ROUTER_ADDRESS_OBJECT.sushiswap
+            };
+            dfs(nextToken, [...path, nextToken], weight + edge.weight, [...steps, newStep]);
           }
         }
       }
-      
+    
+      dfs(sourceToken, [sourceToken], 0, []);
+    
+      if (bestArbitrage) {
+        console.log(`Found non-cyclic arbitrage opportunity: ${bestArbitrage.cycle.join(' -> ')} with weight ${bestArbitrage.cycleWeight}`);
+      } else {
+        console.log(`No non-cyclic arbitrage opportunity found from ${sourceToken} to ${targetToken}`);
+      }
+    
       return bestArbitrage;
     }
 
@@ -512,7 +508,7 @@
       for (const sourceToken of ORIGIN_TOKENS) {
         for (const targetToken of ORIGIN_TOKENS) {
           if (sourceToken !== targetToken) {
-            const nonCyclicArbitrage = detectNonCyclicArbitrage(g, sourceToken, targetToken);
+            const nonCyclicArbitrage = detectNonCyclicArbitrage(g, sourceToken, targetToken, 3);
             if (nonCyclicArbitrage && nonCyclicArbitrage.cycleWeight > 1.015 && nonCyclicArbitrage.cycleWeight < 1.5) {
               arbitrageData.push(nonCyclicArbitrage);
             }
