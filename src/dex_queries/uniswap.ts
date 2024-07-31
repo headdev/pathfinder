@@ -47,7 +47,7 @@ export function HIGHEST_VOLUME_TOKENS(first, skip = 0, orderby = "volumeUSD", or
 export function fetch_pool(id) {
   return gql`
     {
-      pool(id: "${id}") {
+      pool(id: "${id}") 
         token0 { id, symbol }
         token1 { id, symbol }
         token0Price
@@ -60,27 +60,6 @@ export function fetch_pool(id) {
     }
   `
 }
-
-//export function token_whitelist_pools(id) {
-//   return gql`
-//     {
-//       pools(where: { token1: "${id}" }) {
-//         id
-//         token0 {
-//           id
-//           symbol
-//           name
-//         }
-//         token1 {
-//           id
-//           symbol
-//           name
-//         }
-//       }
-//     }
-//   `
-// }
-
 export function token_whitelist_pools(id) {
   return gql`
     {

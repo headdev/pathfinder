@@ -29,7 +29,10 @@
     "graphql-request": "^3.7.0",
     "hardhat-chai-matchers": "^0.0.1",
     "inquirer": "^8.2.4",
+    "ioredis": "^5.4.1",
     "jsbi": "^4.3.0",
+    "node-cache": "^5.1.2",
+    "redis": "^4.7.0",
     "ts-node": "^10.7.0",
     "uniswap-v2-deploy-plugin": "^0.0.4"
   },

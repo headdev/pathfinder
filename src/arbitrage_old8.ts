@@ -1,21 +1,23 @@
 import { ethers } from 'ethers';
 import JSBI from 'jsbi';
+import { request } from 'graphql-request';
+import * as fs from 'fs';
+import * as path from 'path';
+import dotenv from 'dotenv';
+
 import Graph from './graph_library/Graph';
 import GraphVertex from './graph_library/GraphVertex';
 import GraphEdge, { EdgeMetadata } from './graph_library/GraphEdge';
+import * as UNISWAP from './dex_queries/uniswap';
+import * as SUSHISWAP from './dex_queries/sushiswap';
 import { 
   DEX, 
   MIN_TVL, 
   SLIPPAGE, 
   LENDING_FEE, 
   MINPROFIT, 
-  FEE_TEIR_PERCENTAGE_OBJECT, 
-  QUOTER_CONTRACT_ADDRESS,
-  UNISWAP_V2_SUSHSISWAP_ABI
+  FEE_TEIR_PERCENTAGE_OBJECT
 } from './constants';
-import * as fs from 'fs';
-import * as path from 'path';
-import dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -23,19 +25,7 @@ const INITIAL_MATIC = ethers.parseUnits('100', 'gwei');
 const FLASH_LOAN_FEE = 0.0005; // 0.05%
 const WMATIC_ADDRESS = '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270';
 
-const ALLOWED_TOKENS = [
-  "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6",
-  "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
-  "0xfa68fb4628dff1028cfec22b4162fccd0d45efb6",
-  "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
-  "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
-  "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270",
-  "0x03b54a6e9a984069379fae1a4fc4dbae93b3bccd",
-  "0x3a58a54c066fdc0f2d55fc9c89f0415c92ebf3c4",
-  "0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39",
-  "0xe111178a87a3bff0c8d18decba5798827539ae99",
-  "0x0A15232784220D0999b1b2B54CCbCA54079BFcd7",
-];
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
 
 const UNISWAP_V3_FACTORY_ADDRESS = '0x1F98431c8aD98523631AE4a59f267346ea31F984';
 const UNISWAP_V3_FACTORY_ABI = [
@@ -61,8 +51,6 @@ const SUSHISWAP_PAIR_ABI = [
   'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)'
 ];
 
-const provider = new ethers.JsonRpcProvider("https://bold-black-road.matic.quiknode.pro/256dc2c56afd0b5bc32d7c424c3b8c67eb93ad40");
-
 const uniswapV3Factory = new ethers.Contract(UNISWAP_V3_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ABI, provider);
 const sushiswapFactory = new ethers.Contract(SUSHISWAP_FACTORY_ADDRESS, SUSHISWAP_FACTORY_ABI, provider);
 
@@ -78,116 +66,28 @@ interface ArbitrageRoute {
   isRentable?: boolean;
 }
 
-function createLineGraph(originalGraph: Graph): Graph {
-  const lineGraph = new Graph(true);
+async function fetchTokens(first: number, skip: number = 0, dex: DEX): Promise<string[]> {
+  let dexEndpoint = (dex === DEX.UniswapV3) ? UNISWAP.ENDPOINT : SUSHISWAP.ENDPOINT;
+  let tokensQuery = (dex === DEX.UniswapV3) ? UNISWAP.HIGHEST_VOLUME_TOKENS(first) : SUSHISWAP.HIGHEST_VOLUME_TOKENS(first, skip);
   
-  for (const edge of originalGraph.getAllEdges()) {
-    lineGraph.addVertex(new GraphVertex(`${edge.startVertex.getKey()}-${edge.endVertex.getKey()}`));
+  try {
+    let mostActiveTokens = await request(dexEndpoint, tokensQuery);
+    console.log(`Tokens from ${dex}:`, mostActiveTokens.tokens)
+
+    return mostActiveTokens.tokens.map((t: any) => t.id);
+  } catch (error) {
+    console.error(`Error fetching tokens from ${dex}:`, error);
+    return [];
   }
-  
-  for (const edge1 of originalGraph.getAllEdges()) {
-    for (const edge2 of originalGraph.getAllEdges()) {
-      if (edge1.endVertex === edge2.startVertex) {
-        const vertex1 = lineGraph.getVertexByKey(`${edge1.startVertex.getKey()}-${edge1.endVertex.getKey()}`);
-        const vertex2 = lineGraph.getVertexByKey(`${edge2.startVertex.getKey()}-${edge2.endVertex.getKey()}`);
-        lineGraph.addEdge(new GraphEdge(
-          vertex1,
-          vertex2,
-          edge2.weight,
-          edge2.rawWeight,
-          edge2.metadata
-        ));
-      }
-    }
-  }
-  
-  return lineGraph;
 }
-
-function modifiedMooreBellmanFord(graph: Graph, sourceVertex: GraphVertex): { distances: {[key: string]: number}, paths: {[key: string]: string[]} } {
-  const distances: {[key: string]: number} = {};
-  const paths: {[key: string]: string[]} = {};
-  
-  for (const vertex of graph.getAllVertices()) {
-    distances[vertex.getKey()] = Infinity;
-    paths[vertex.getKey()] = [];
-  }
-  
-  if (!sourceVertex) {
-    console.warn("Source vertex is undefined");
-    return { distances, paths };
-  }
-  
-  distances[sourceVertex.getKey()] = 0;
-  
-  for (let i = 0; i < graph.getAllVertices().length - 1; i++) {
-    for (const edge of graph.getAllEdges()) {
-      if (!edge.startVertex || !edge.endVertex) continue;
-      
-      const startDistance = distances[edge.startVertex.getKey()];
-      const endDistance = distances[edge.endVertex.getKey()];
-      
-      if (startDistance + edge.weight < endDistance) {
-        distances[edge.endVertex.getKey()] = startDistance + edge.weight;
-        paths[edge.endVertex.getKey()] = [...paths[edge.startVertex.getKey()], edge.endVertex.getKey()];
-        
-        if (!paths[edge.startVertex.getKey()].includes(edge.endVertex.getKey()) || edge.endVertex.getKey() === sourceVertex.getKey()) {
-          distances[edge.endVertex.getKey()] = startDistance + edge.weight;
-          paths[edge.endVertex.getKey()] = [...paths[edge.startVertex.getKey()], edge.endVertex.getKey()];
-        }
-      }
-    }
-  }
-  
-  return { distances, paths };
-}
-
-function detectNonCyclicArbitrage(graph: Graph, sourceToken: string, targetToken: string): ArbitrageRoute | null {
-  const lineGraph = createLineGraph(graph);
-  
-  // Buscar todos los vértices que comienzan con sourceToken
-  const sourceVertices = lineGraph.getAllVertices().filter(v => v.getKey().startsWith(sourceToken + '-'));
-  
-  if (sourceVertices.length === 0) {
-    return null;  // No hay vértices que comiencen con sourceToken
-  }
-  
-  let bestArbitrage: ArbitrageRoute | null = null;
-  
-  for (const sourceVertex of sourceVertices) {
-    const { distances, paths } = modifiedMooreBellmanFord(lineGraph, sourceVertex);
-    
-    // Buscar todos los vértices que terminan con targetToken
-    const targetVertices = lineGraph.getAllVertices().filter(v => v.getKey().endsWith('-' + targetToken));
-    
-    for (const targetVertex of targetVertices) {
-      if (distances[targetVertex.getKey()] < 0) {
-        const arbitragePath = paths[targetVertex.getKey()].map(vertex => vertex.split('-')[0]);
-        const arbitrage: ArbitrageRoute = {
-          cycle: [sourceToken, ...arbitragePath, sourceToken],
-          cycleWeight: Math.exp(-distances[targetVertex.getKey()]),
-          detail: JSON.stringify(arbitragePath),
-          type: 'non-cyclic'
-        };
-        
-        if (!bestArbitrage || arbitrage.cycleWeight > bestArbitrage.cycleWeight) {
-          bestArbitrage = arbitrage;
-        }
-      }
-    }
-  }
-  
-  return bestArbitrage;
-}
-
-
-async function fetchUniswapV3Pools(tokenIds: string[]): Promise<Set<string>> {
+async function fetchUniswapV3Pools(tokenIds: string[], maxPools: number = 50): Promise<Set<string>> {
   const pools = new Set<string>();
-  const fees = [500, 3000, 10000]; // Fee tiers de Uniswap V3
+  const fees = [500, 3000, 10000];
 
-  for (let i = 0; i < tokenIds.length; i++) {
-    for (let j = i + 1; j < tokenIds.length; j++) {
+  for (let i = 0; i < tokenIds.length && pools.size < maxPools; i++) {
+    for (let j = i + 1; j < tokenIds.length && pools.size < maxPools; j++) {
       for (const fee of fees) {
+        if (pools.size >= maxPools) break;
         const pool = await uniswapV3Factory.getPool(tokenIds[i], tokenIds[j], fee);
         if (pool !== ethers.ZeroAddress) {
           pools.add(pool);
@@ -200,11 +100,11 @@ async function fetchUniswapV3Pools(tokenIds: string[]): Promise<Set<string>> {
   return pools;
 }
 
-async function fetchSushiswapPools(tokenIds: string[]): Promise<Set<string>> {
+async function fetchSushiswapPools(tokenIds: string[], maxPools: number = 50): Promise<Set<string>> {
   const pools = new Set<string>();
 
-  for (let i = 0; i < tokenIds.length; i++) {
-    for (let j = i + 1; j < tokenIds.length; j++) {
+  for (let i = 0; i < tokenIds.length && pools.size < maxPools; i++) {
+    for (let j = i + 1; j < tokenIds.length && pools.size < maxPools; j++) {
       const pair = await sushiswapFactory.getPair(tokenIds[i], tokenIds[j]);
       if (pair !== ethers.ZeroAddress) {
         pools.add(pair);
@@ -340,6 +240,105 @@ function updateOrAddEdge(g: Graph, startVertex: GraphVertex, endVertex: GraphVer
   }
 }
 
+function modifiedMooreBellmanFord(graph: Graph, sourceVertex: GraphVertex): { distances: {[key: string]: number}, paths: {[key: string]: string[]} } {
+  const distances: {[key: string]: number} = {};
+  const paths: {[key: string]: string[]} = {};
+  
+  for (const vertex of graph.getAllVertices()) {
+    distances[vertex.getKey()] = Infinity;
+    paths[vertex.getKey()] = [];
+  }
+  
+  if (!sourceVertex) {
+    console.warn("Source vertex is undefined");
+    return { distances, paths };
+  }
+  
+  distances[sourceVertex.getKey()] = 0;
+  
+  for (let i = 0; i < graph.getAllVertices().length - 1; i++) {
+    for (const edge of graph.getAllEdges()) {
+      if (!edge.startVertex || !edge.endVertex) continue;
+      
+      const startDistance = distances[edge.startVertex.getKey()];
+      const endDistance = distances[edge.endVertex.getKey()];
+      
+      if (startDistance + edge.weight < endDistance) {
+        distances[edge.endVertex.getKey()] = startDistance + edge.weight;
+        paths[edge.endVertex.getKey()] = [...paths[edge.startVertex.getKey()], edge.endVertex.getKey()];
+        
+        if (!paths[edge.startVertex.getKey()].includes(edge.endVertex.getKey()) || edge.endVertex.getKey() === sourceVertex.getKey()) {
+          distances[edge.endVertex.getKey()] = startDistance + edge.weight;
+          paths[edge.endVertex.getKey()] = [...paths[edge.startVertex.getKey()], edge.endVertex.getKey()];
+        }
+      }
+    }
+  }
+  
+  return { distances, paths };
+}
+
+function detectNonCyclicArbitrage(graph: Graph, sourceToken: string, targetToken: string): ArbitrageRoute | null {
+  const lineGraph = createLineGraph(graph);
+  
+  const sourceVertices = lineGraph.getAllVertices().filter(v => v.getKey().startsWith(sourceToken + '-'));
+  
+  if (sourceVertices.length === 0) {
+    return null;
+  }
+  
+  let bestArbitrage: ArbitrageRoute | null = null;
+  
+  for (const sourceVertex of sourceVertices) {
+    const { distances, paths } = modifiedMooreBellmanFord(lineGraph, sourceVertex);
+    
+    const targetVertices = lineGraph.getAllVertices().filter(v => v.getKey().endsWith('-' + targetToken));
+    
+    for (const targetVertex of targetVertices) {
+      if (distances[targetVertex.getKey()] < 0) {
+        const arbitragePath = paths[targetVertex.getKey()].map(vertex => vertex.split('-')[0]);
+        const arbitrage: ArbitrageRoute = {
+          cycle: [sourceToken, ...arbitragePath, sourceToken],
+          cycleWeight: Math.exp(-distances[targetVertex.getKey()]),
+          detail: JSON.stringify(arbitragePath),
+          type: 'non-cyclic'
+        };
+        
+        if (!bestArbitrage || arbitrage.cycleWeight > bestArbitrage.cycleWeight) {
+          bestArbitrage = arbitrage;
+        }
+      }
+    }
+  }
+  
+  return bestArbitrage;
+}
+function createLineGraph(originalGraph: Graph): Graph {
+  const lineGraph = new Graph(true);
+  
+  for (const edge of originalGraph.getAllEdges()) {
+    lineGraph.addVertex(new GraphVertex(`${edge.startVertex.getKey()}-${edge.endVertex.getKey()}`));
+  }
+  
+  for (const edge1 of originalGraph.getAllEdges()) {
+    for (const edge2 of originalGraph.getAllEdges()) {
+      if (edge1.endVertex === edge2.startVertex) {
+        const vertex1 = lineGraph.getVertexByKey(`${edge1.startVertex.getKey()}-${edge1.endVertex.getKey()}`);
+        const vertex2 = lineGraph.getVertexByKey(`${edge2.startVertex.getKey()}-${edge2.endVertex.getKey()}`);
+        lineGraph.addEdge(new GraphEdge(
+          vertex1,
+          vertex2,
+          edge2.weight,
+          edge2.rawWeight,
+          edge2.metadata
+        ));
+      }
+    }
+  }
+  
+  return lineGraph;
+}
+
 async function calcArbitrage(g: Graph): Promise<ArbitrageRoute[]> {
   console.log("Starting arbitrage calculation...");
   let arbitrageData: ArbitrageRoute[] = [];
@@ -408,10 +407,9 @@ async function calculateInitialAmounts(startToken: string): Promise<{ calculo1: 
       JSBI.BigInt(1e18)
     );
     
-    // El montomaxflashloan ya incluye el fee de AAVE
     const montomaxflashloan = JSBI.divide(
       JSBI.multiply(calculo1, JSBI.BigInt(10000)),
-      JSBI.BigInt(9995)  // 10000 / (1 - 0.0005) = 10000 / 0.9995 ≈ 10005
+      JSBI.BigInt(9995)
     );
 
     return { 
@@ -474,7 +472,7 @@ async function processArbitrageRoutes(routes: ArbitrageRoute[]): Promise<Arbitra
     try {
       const { calculo1, montomaxflashloan } = await calculateInitialAmounts(route.cycle[0]);
       if (calculo1 === '0' || montomaxflashloan === '0') {
-        continue;  // Skip this route if we couldn't calculate initial amounts
+        continue;
       }
       const optimalInput = calculateOptimalInput(route, parseFloat(calculo1), parseFloat(montomaxflashloan));
       const estimatedProfit = calculateProfit(route, optimalInput).toString();
@@ -496,36 +494,48 @@ async function processArbitrageRoutes(routes: ArbitrageRoute[]): Promise<Arbitra
 
   return processedRoutes;
 }
-
-export async function main(numberTokens: number, dexs: Set<DEX>, debug: boolean = false) {
+async function main(numberTokens: number = 5, DEXs: Set<DEX>, debug: boolean = false) {
   try {
     console.log("Iniciando el proceso de arbitraje...");
 
-    const tokenIds = ALLOWED_TOKENS;
-    console.log(`Se usarán ${tokenIds.length} tokens.`);
+    let uniTokens = DEXs.has(DEX.UniswapV3) ? await fetchTokens(numberTokens, 0, DEX.UniswapV3) : [];
+    let sushiTokens = DEXs.has(DEX.Sushiswap) ? await fetchTokens(numberTokens, 0, DEX.Sushiswap) : [];
+    
+    let tokenIds = [...uniTokens, ...sushiTokens];
+
+    console.log(`Total tokens: ${tokenIds.length}`);
 
     let g: Graph = new Graph(true);
-    tokenIds.forEach(id => g.addVertex(new GraphVertex(id)));
-    console.log("Grafo inicializado.");
+    tokenIds.forEach(element => {
+      g.addVertex(new GraphVertex(element))
+    });
 
     console.log("Obteniendo pools y precios...");
-    const uniPools = await fetchUniswapV3Pools(tokenIds);
-    await fetchPoolPrices(g, uniPools, DEX.UniswapV3, true);
-    const sushiPools = await fetchSushiswapPools(tokenIds);
-    await fetchPoolPrices(g, sushiPools, DEX.Sushiswap, true);
+    let uniPools: Set<string> | undefined;
+    let sushiPools: Set<string> | undefined;
+
+    if (DEXs.has(DEX.UniswapV3)) {
+      uniPools = await fetchUniswapV3Pools(uniTokens, 50);
+      console.log(`Uniswap V3 pools found: ${uniPools.size}`);
+      await fetchPoolPrices(g, uniPools, DEX.UniswapV3, debug);
+    }
+    if (DEXs.has(DEX.Sushiswap)) {
+      sushiPools = await fetchSushiswapPools(sushiTokens, 50);
+      console.log(`Sushiswap pools found: ${sushiPools.size}`);
+      await fetchPoolPrices(g, sushiPools, DEX.Sushiswap, debug);
+    }
+
+    console.log(`Total pools: ${(uniPools?.size || 0) + (sushiPools?.size || 0)}`);
 
     console.log("Calculando rutas de arbitraje...");
     const arbitrageRoutes = await calcArbitrage(g);
     console.log(`Se encontraron ${arbitrageRoutes.length} rutas de arbitraje potenciales.`);
 
-    console.log("Procesando y analizando rutas...");
-    const processedRoutes = await processArbitrageRoutes(arbitrageRoutes);
-
     const filePath = path.join(__dirname, 'arbitrageRoutes.json');
-    fs.writeFileSync(filePath, JSON.stringify(processedRoutes, null, 2));
+    fs.writeFileSync(filePath, JSON.stringify(arbitrageRoutes, null, 2));
     console.log(`Resultados guardados en ${filePath}`);
 
-    console.log(`Proceso completado. Se procesaron ${processedRoutes.length} rutas de arbitraje.`);
+    console.log(`Proceso completado. Se encontraron ${arbitrageRoutes.length} rutas de arbitraje.`);
   } catch (error) {
     console.error("Error en la ejecución principal:", error);
   }
@@ -533,7 +543,9 @@ export async function main(numberTokens: number, dexs: Set<DEX>, debug: boolean 
 
 // Si quieres ejecutar el script directamente
 if (require.main === module) {
-  main(5, new Set([DEX.UniswapV3, DEX.Sushiswap]), true)
+  main(10, new Set([DEX.UniswapV3, DEX.Sushiswap]), true)
     .then(() => console.log("Script completed successfully"))
     .catch(error => console.error("An error occurred during execution:", error));
 }
+
+export { main };
