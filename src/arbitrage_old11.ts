@@ -13,7 +13,8 @@
       DEX, 
       MIN_TVL, 
       MINPROFIT, 
-      FEE_TEIR_PERCENTAGE_OBJECT
+      FEE_TEIR_PERCENTAGE_OBJECT,
+      ROUTER_ADDRESS_OBJECT
     } from './constants';
 
     dotenv.config();
@@ -63,6 +64,7 @@
       fromToken: string;
       toToken: string;
       dex: DEX | string;
+      router: string;
     }
     
     interface ArbitrageRoute {
@@ -315,13 +317,25 @@
           if (distances[targetVertex.getKey()] < 0) {
             const arbitragePath = paths[targetVertex.getKey()].map(vertex => vertex.split('-')[0]);
             const steps: SwapStep[] = arbitragePath.map((token, index) => {
-              if (index === arbitragePath.length - 1) return { fromToken: token, toToken: sourceToken, dex: DEX.UniswapV3 };
+              if (index === arbitragePath.length - 1) {
+                return { 
+                  fromToken: token, 
+                  toToken: sourceToken, 
+                  dex: DEX.UniswapV3,
+                  router: ROUTER_ADDRESS_OBJECT.uniswapV3
+                };
+              }
               const nextToken = arbitragePath[index + 1];
               const edge = graph.findEdge(graph.getVertexByKey(token), graph.getVertexByKey(nextToken));
               return {
                 fromToken: token,
                 toToken: nextToken,
-                dex: edge ? edge.metadata.dex : DEX.UniswapV3
+                dex: edge ? edge.metadata.dex : DEX.UniswapV3,
+                router: edge 
+                  ? (edge.metadata.dex === DEX.UniswapV3 
+                      ? ROUTER_ADDRESS_OBJECT.uniswapV3 
+                      : ROUTER_ADDRESS_OBJECT.sushiswap)
+                  : ROUTER_ADDRESS_OBJECT.uniswapV3
               };
             });
             const arbitrage: ArbitrageRoute = {
@@ -511,7 +525,8 @@
         ...route,
         steps: route.steps.map(step => ({
           ...step,
-          dex: getDexName(step.dex as DEX)
+          dex: getDexName(step.dex as DEX),
+          router: step.router // Mantén la información del router
         }))
       }));
     
@@ -577,7 +592,10 @@
           steps.push({
             fromToken: cycle[i],
             toToken: cycle[i + 1],
-            dex: edge.metadata.dex
+            dex: edge.metadata.dex,
+            router: edge.metadata.dex === DEX.UniswapV3 
+              ? ROUTER_ADDRESS_OBJECT.uniswapV3 
+              : ROUTER_ADDRESS_OBJECT.sushiswap
           });
         } else {
           console.warn(`No edge found between ${cycle[i]} and ${cycle[i + 1]}`);
