@@ -484,7 +484,7 @@
         }
     
         console.log(`Calculating for vertex: ${startVertex.getKey()}`);
-        let cycles = findCycles(g, startVertex, 3, 6);
+        let cycles = findCycles(g, startVertex, 3, 8);
         
         for (const cycle of cycles) {
           let cycleString = cycle.join('');
